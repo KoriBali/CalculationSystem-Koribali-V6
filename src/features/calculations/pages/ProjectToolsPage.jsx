@@ -37,7 +37,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet";
-import { CheckCircle2, Circle, RotateCcw, ArrowRight } from "lucide-react";
+import { CheckCircle, Circle, RotateCcw, ArrowRight } from "lucide-react";
 import { usePoleStandardData } from "../hooks/usePoleStandardData";
 import STANDARD_POLE_DATA from "../data/specStandardPole.json";
 import {
@@ -476,9 +476,9 @@ export default function ProjectToolsPage() {
       </div>
 
       {/* 2-Column Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-6 items-start">
         {/* ── LEFT PANEL: Pole Standard Selection ── */}
-        <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col gap-5 bg-white">
+        <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col gap-5 bg-white h-fit">
           {/* Section 1: Standard Type */}
           <div>
             <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
@@ -500,7 +500,7 @@ export default function ProjectToolsPage() {
                   >
                     <span>{type.label}</span>
                     {isSelected ? (
-                      <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
                     ) : (
                       <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                     )}
@@ -534,7 +534,7 @@ export default function ProjectToolsPage() {
                   >
                     <span>{item.label}</span>
                     {isSelected ? (
-                      <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
                     ) : (
                       <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                     )}
@@ -575,7 +575,7 @@ export default function ProjectToolsPage() {
                     >
                       <span>{pos.label}</span>
                       {isSelected ? (
-                        <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
                       ) : (
                         <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                       )}
@@ -657,7 +657,7 @@ export default function ProjectToolsPage() {
           </div>
 
           {/* Diagram Preview Area */}
-          <div className="border border-dashed border-gray-300 rounded p-4 flex-1 flex items-center justify-center min-h-[480px] lg:min-h-[580px] bg-white relative overflow-hidden">
+          <div className="border border-dashed border-gray-300 rounded p-4 md:p-6 flex-1 flex items-center justify-center min-h-[680px] md:min-h-[780px] lg:min-h-[860px] xl:min-h-[900px] bg-white relative overflow-hidden">
             {!selectedStandard || !installationType ? (
               <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
                 Select a standard to preview the pole.
@@ -671,18 +671,16 @@ export default function ProjectToolsPage() {
                 Select a standard to preview the pole.
               </div>
             ) : (
-              <div className="relative w-full h-full flex items-center justify-center">
+              <div className="relative w-full h-full flex items-center justify-center py-4">
                 {/* Aspect-ratio pinned wrapper matching diagramLayout viewBox */}
                 <div
-                  className="relative flex items-center justify-center max-w-full max-h-full"
+                  className="relative flex items-center justify-center max-w-full max-h-full h-[640px] md:h-[740px] lg:h-[820px] xl:h-[860px]"
                   style={
                     diagramLayout
                       ? {
-                          width: `min(100%, calc(520px * ${diagramLayout.viewBox.width} / ${diagramLayout.viewBox.height}))`,
                           aspectRatio: `${diagramLayout.viewBox.width} / ${diagramLayout.viewBox.height}`,
-                          height: "520px",
                         }
-                      : { height: "520px" }
+                      : { height: "820px" }
                   }
                 >
                   {/* Background SVG diagram */}
@@ -697,15 +695,16 @@ export default function ProjectToolsPage() {
                     <div
                       key={`${label.key}:${label.lines.join("|")}`}
                       style={label.style}
-                      className={`absolute pointer-events-none whitespace-nowrap text-[11px] md:text-xs leading-none text-blue-700 font-medium ${
+                      className={`absolute pointer-events-none whitespace-nowrap text-xs md:text-sm [--label-lh:15px] md:[--label-lh:18px] leading-[var(--label-lh)] text-[#1d4ed8] ${
                         label.isCentered ? "text-center" : ""
                       }`}
                     >
                       {label.isLeader ? (
                         <>
-                          <div>{label.lines[0]}</div>
+                          <div className="px-[3px]">{label.lines[0]}</div>
+                          {/* 1px gap where the SVG's leader line runs */}
                           <div className="h-px bg-transparent my-0.5" />
-                          <div>{label.lines[1]}</div>
+                          <div className="px-[3px] pt-px">{label.lines[1]}</div>
                         </>
                       ) : (
                         label.lines.map((l) => <div key={l}>{l}</div>)

@@ -35,6 +35,7 @@ import {
   ChevronLeft,
   ChevronDown,
   ChevronUp,
+  CheckCircle,
   CheckCircle2,
   Circle,
   Plus,
@@ -426,7 +427,7 @@ export default function StructuralPage() {
                       >
                         <span>{std.label}</span>
                         {isSelected ? (
-                          <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                          <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
                         ) : (
                           <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                         )}
