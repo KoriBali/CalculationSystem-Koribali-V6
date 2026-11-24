@@ -29,7 +29,6 @@ import {
   DEFAULT_SCHEMATIC_URL,
 } from "../../../calculations/hooks/useSchematicBridge";
 import { getStandardPoleSchematicParameters } from "../../../calculations/utils/standardPoleSchematicMapper";
-import { getDummyReportPayload } from "../../utils/dummyReportPayload";
 import { normalizeCover } from "../../utils/reportFormatters";
 import {
   getDraftData,
@@ -415,31 +414,11 @@ export function ReportView() {
                 String(storedPole?.height || "")),
         );
 
-      const hasOldDummyCover =
-        storedSnapshot.cover?.calculationNumber === "KB-2026-001";
-      if (isPoleChanged || hasOldDummyCover) {
-        const fresh = getDummyReportPayload(projectType, storedPole);
-        sessionStorage.setItem(
-          `${projectType}_reportSnapshot`,
-          JSON.stringify(fresh),
-        );
-        return fresh;
-      }
       return storedSnapshot;
     }
 
-    // If looking at a specific draft that hasn't calculated yet, return null (trigger empty state)
-    if (draftId) {
-      return null;
-    }
-
-    const fresh = getDummyReportPayload(projectType, storedPole);
-    sessionStorage.setItem(
-      `${projectType}_reportSnapshot`,
-      JSON.stringify(fresh),
-    );
-    return fresh;
-  }, [storedSnapshot, projectType, draftId]);
+    return null;
+  }, [storedSnapshot]);
 
   const num = (v, fallback = 0) => {
     if (v === undefined || v === null || v === "") return fallback;

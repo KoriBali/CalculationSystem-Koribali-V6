@@ -11,8 +11,10 @@ import {
   Plus,
   Trash2,
   Loader2,
-  AlertCircle,
   ArrowRight,
+  DoorOpen,
+  Layers,
+  Box,
 } from "lucide-react";
 
 import { usePoleForm } from "../hooks/usePoleForm";
@@ -26,7 +28,6 @@ import { usePoleCalculation } from "../hooks/usePoleCalculation";
 import { LowestHeightIllustration } from "../components/forms/pole/LowestHeightIllustration";
 import { ResultsTableView } from "../components/tables/pole-result/ResultTableView";
 import { ToastModal } from "../components/modals/ToastModal";
-import { FormSelect } from "../../../shared/components/FormSelect";
 import { notifyCalculationProgressChanged } from "../utils/calculationProgressEvent";
 
 // Design Standards available for Old/New JIL
@@ -82,6 +83,22 @@ export default function StructuralPage() {
         const next = { ...prev, ...updates };
         sessionStorage.setItem(`${projectType}_condition`, JSON.stringify(next));
         setConditionState(next);
+
+        // Keep calculation_config in sync with component toggles
+        const rawConfig = sessionStorage.getItem(`${projectType}_calculation_config`);
+        const prevConfig = rawConfig ? JSON.parse(rawConfig) : {};
+        const nextConfig = {
+          ...prevConfig,
+          pole: true,
+          opening: next.openingEnabled !== undefined ? Boolean(next.openingEnabled) : true,
+          baseplate: Boolean(next.baseplateEnabled),
+          foundation: Boolean(next.foundationEnabled),
+        };
+        sessionStorage.setItem(
+          `${projectType}_calculation_config`,
+          JSON.stringify(nextConfig),
+        );
+
         notifyCalculationProgressChanged();
       } catch (e) {
         console.warn("Failed to update condition:", e);
@@ -128,16 +145,59 @@ export default function StructuralPage() {
     expandArm: () => {},
   });
 
+  const isStandard = condition.poleType === "standard";
   const installationType =
     condition.installationPole ||
     poleStandardForm.taperPoleStandard?.installationPole ||
     "baseplate";
-
   const isBaseplate = installationType === "baseplate";
 
-  // Handle step navigation to Opening
+  // Component toggles for Custom mode
+  const openingEnabled =
+    condition.openingEnabled !== undefined ? Boolean(condition.openingEnabled) : true;
+  const baseplateEnabled = isBaseplate
+    ? condition.baseplateEnabled !== undefined
+      ? Boolean(condition.baseplateEnabled)
+      : true
+    : false;
+  const foundationEnabled = Boolean(condition.foundationEnabled);
+
+  // Determine next step path and label
+  const { nextLabel, nextRoute } = useMemo(() => {
+    if (isStandard) {
+      return {
+        nextLabel: "Next: Opening",
+        nextRoute: "/project-tools/opening",
+      };
+    }
+
+    // Custom Mode dynamic navigation
+    if (openingEnabled) {
+      return {
+        nextLabel: "Next: Opening",
+        nextRoute: "/project-tools/opening",
+      };
+    }
+    if (baseplateEnabled) {
+      return {
+        nextLabel: "Next: Baseplate",
+        nextRoute: "/project-tools/baseplate",
+      };
+    }
+    if (foundationEnabled) {
+      return {
+        nextLabel: "Next: Foundation",
+        nextRoute: "/project-tools/foundation",
+      };
+    }
+    return {
+      nextLabel: "Generate Report",
+      nextRoute: "/project-tools/report",
+    };
+  }, [isStandard, openingEnabled, baseplateEnabled, foundationEnabled]);
+
   const handleNextStep = () => {
-    navigate("/project-tools/opening");
+    navigate(nextRoute);
   };
 
   return (
@@ -160,18 +220,26 @@ export default function StructuralPage() {
           </div>
 
           {/* Breadcrumb Steps */}
-          <div className="flex items-center gap-2 text-xs md:text-sm font-medium">
+          <div className="flex items-center gap-2 text-xs md:text-sm font-medium flex-wrap">
             <span className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 border border-blue-200">
               Structural
             </span>
-            <span className="text-gray-400">&gt;</span>
-            <Link
-              to="/project-tools/opening"
-              className="text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              Opening
-            </Link>
-            {isBaseplate && (
+
+            {/* Opening step */}
+            {(isStandard || openingEnabled) && (
+              <>
+                <span className="text-gray-400">&gt;</span>
+                <Link
+                  to="/project-tools/opening"
+                  className="text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                  Opening
+                </Link>
+              </>
+            )}
+
+            {/* Baseplate step */}
+            {(isStandard ? isBaseplate : baseplateEnabled) && (
               <>
                 <span className="text-gray-400">&gt;</span>
                 <Link
@@ -182,6 +250,21 @@ export default function StructuralPage() {
                 </Link>
               </>
             )}
+
+            {/* Foundation step */}
+            {foundationEnabled && (
+              <>
+                <span className="text-gray-400">&gt;</span>
+                <Link
+                  to="/project-tools/foundation"
+                  className="text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                  Foundation
+                </Link>
+              </>
+            )}
+
+            {/* Report step */}
             <span className="text-gray-400">&gt;</span>
             <Link
               to="/project-tools/report"
@@ -886,7 +969,7 @@ export default function StructuralPage() {
           </div>
         </div>
 
-        {/* ── BOTTOM ACTIONS ── */}
+        {/* ── BOTTOM ACTIONS: Calculate Results Button ── */}
         <div className="mt-6 flex items-center justify-between pt-4 border-t border-gray-200">
           <button
             type="button"
@@ -904,28 +987,160 @@ export default function StructuralPage() {
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={handleNextStep}
-            className="px-6 py-2.5 rounded border border-gray-300 hover:border-gray-500 text-gray-800 text-xs md:text-sm font-medium transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <span>Next: Opening</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
+          {/* In standard mode, show Next button before results if already calculated */}
+          {isStandard && (
+            <button
+              type="button"
+              onClick={handleNextStep}
+              className="px-6 py-2.5 rounded border border-gray-300 hover:border-gray-500 text-gray-800 text-xs md:text-sm font-medium transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>{nextLabel}</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
 
-        {/* ── CALCULATION RESULTS DISPLAY ── */}
+        {/* ── CALCULATION RESULTS DISPLAY (Image 1) ── */}
         {(calculation.showResults ||
           (calculation.results && calculation.results.length > 0)) && (
-          <div id="results-pole" className="mt-8">
+          <div id="results-pole" className="mt-8 space-y-6">
             <ResultsTableView
               results={calculation.results}
-              resultsDo={calculation.resultsDo}
-              resultsOhw={calculation.resultsOhw}
-              resultsArm={calculation.resultsArm}
               display={calculation.displayResult}
               calculationKey={calculation.calculationKey}
             />
+
+            {/* ── ADDITIONAL COMPONENTS SELECTION CARD (FOR CUSTOM MODE) ── */}
+            {!isStandard && (
+              <div className="border border-gray-300 rounded bg-white p-5 shadow-xs">
+                <div className="mb-4">
+                  <h3 className="text-xs md:text-sm font-semibold text-gray-900">
+                    Additional Components
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Select which components you would like to include in this custom calculation:
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-5">
+                  {/* Opening Toggle Card */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateCondition({ openingEnabled: !openingEnabled })
+                    }
+                    className={`p-3.5 rounded border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                      openingEnabled
+                        ? "border-blue-500 bg-blue-50/50 text-blue-900"
+                        : "border-gray-200 hover:border-gray-300 text-gray-700 bg-white"
+                    }`}
+                  >
+                    <div
+                      className={`p-2 rounded ${
+                        openingEnabled ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      <DoorOpen className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold">Opening</span>
+                        {openingEnabled ? (
+                          <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-gray-300" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        Cable access handhole opening
+                      </p>
+                    </div>
+                  </button>
+
+                  {/* Baseplate Toggle Card (if installation is baseplate) */}
+                  {isBaseplate && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateCondition({ baseplateEnabled: !baseplateEnabled })
+                      }
+                      className={`p-3.5 rounded border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                        baseplateEnabled
+                          ? "border-blue-500 bg-blue-50/50 text-blue-900"
+                          : "border-gray-200 hover:border-gray-300 text-gray-700 bg-white"
+                      }`}
+                    >
+                      <div
+                        className={`p-2 rounded ${
+                          baseplateEnabled ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
+                        }`}
+                      >
+                        <Box className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold">Baseplate</span>
+                          {baseplateEnabled ? (
+                            <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-gray-300" />
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-0.5">
+                          Baseplate and anchor rib analysis
+                        </p>
+                      </div>
+                    </button>
+                  )}
+
+                  {/* Foundation Toggle Card */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateCondition({ foundationEnabled: !foundationEnabled })
+                    }
+                    className={`p-3.5 rounded border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                      foundationEnabled
+                        ? "border-blue-500 bg-blue-50/50 text-blue-900"
+                        : "border-gray-200 hover:border-gray-300 text-gray-700 bg-white"
+                    }`}
+                  >
+                    <div
+                      className={`p-2 rounded ${
+                        foundationEnabled ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold">Foundation</span>
+                        {foundationEnabled ? (
+                          <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-gray-300" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        Concrete foundation & caisson check
+                      </p>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Proceed button in Custom Mode */}
+                <div className="flex justify-end pt-3 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={handleNextStep}
+                    className="px-6 py-2.5 rounded bg-gray-900 hover:bg-gray-800 text-white text-xs md:text-sm font-medium transition-all flex items-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    <span>{nextLabel}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

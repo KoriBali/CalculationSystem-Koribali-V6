@@ -1,5 +1,6 @@
-import PoleFormView from "../../components/forms/pole/PoleFormView";
+// src/features/calculations/pages/steps/PoleStep.jsx
+import StructuralPage from "../StructuralPage";
 
 export default function PoleFormPage() {
-  return <PoleFormView />;
+  return <StructuralPage />;
 }

@@ -2,11 +2,27 @@ import React, { useEffect } from "react";
 import { FileText, FileEdit, RotateCcw, ChevronRight } from "lucide-react";
 import { useCoverForm, DEFAULT_COVER } from "../../hooks/useCoverForm";
 import { useMasterData } from "../../hooks/useMasterData";
-import {
-  inputStyle,
-  ErrorStyle,
-  Label,
-} from "../forms/cover/coverFieldPrimitives";
+// Form styling primitives for CoverFormModal
+const inputStyle = (hasError) =>
+  `w-full px-3 md:px-4 py-2 md:py-2.5 rounded-md md:rounded-lg outline-none transition-all text-xs md:text-sm border
+  ${
+    hasError
+      ? "border-red-500 bg-[#fff5f5] ring-1 ring-red-200"
+      : "border-gray-300 bg-white focus:border-gray-700 focus:ring-1 focus:ring-gray-700"
+  }`;
+
+const ErrorStyle = ({ show, text }) =>
+  show ? (
+    <div className="absolute left-0 -bottom-4 md:-bottom-5 flex items-center gap-1 text-[9px] md:text-[11px] text-red-500">
+      <span>*{text}</span>
+    </div>
+  ) : null;
+
+const Label = ({ children }) => (
+  <label className="block text-gray-700 mb-1 md:mb-2 text-xs md:text-sm font-medium">
+    {children}
+  </label>
+);
 import { FormSelect } from "../../../../shared/components/FormSelect";
 import {
   getReportHeader,

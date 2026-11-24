@@ -1,38 +1,15 @@
-import React, { useState } from "react";
+// src/features/calculations/components/tables/pole-result/ResultTableView.jsx
+import React from "react";
 import PropTypes from "prop-types";
 import { FileSpreadsheet, CheckCircle2 } from "lucide-react";
-
-import { PoleResultTable } from "./PoleResultTable";
-import { DirectObjectResultTable } from "./DirectObjectResultTable";
-import { OverheadWireResultTable } from "./OverheadWireResultTable";
-import { ArmResultTable } from "./ArmResultTable";
-import { ArmObjectResultTable } from "./ArmObjectResultTable";
 import { SummaryResultTable } from "./SummaryResultTable";
 
-// ─── COMPONENT ───────────────────────────────────────────────────────────────
-
 export function ResultsTableView({
-  results,
-  resultsDo,
-  resultsOhw,
-  resultsArm,
+  results = [],
   display = null,
   calculationKey = 0,
-  isStale = false,
 }) {
-  // Page index for each section — reserved for future pagination
-  const [page] = useState(0);
-  const [pageDo] = useState(0);
-  const [pageOhw] = useState(0);
-  const [pageArm] = useState(0);
-
-  // Current item for each section — used as existence guard before rendering tables
-  const currentPole = results[page];
-  const currentDo = resultsDo[pageDo];
-  const currentOhw = resultsOhw[pageOhw];
-  const currentArm = resultsArm[pageArm];
-
-  const hasResults = results.length > 0;
+  const hasResults = Array.isArray(results) && results.length > 0;
 
   return (
     <div className="bg-white rounded border border-gray-300 overflow-hidden">
@@ -51,50 +28,18 @@ export function ResultsTableView({
         </div>
       </div>
 
-      {/* ── Pole Result Table ── */}
-      {currentPole && <PoleResultTable resultPole={results} />}
-
-      {/* ── Direct Object Result Table ── */}
-      {/* Temporarily hidden as per user request */}
-      {/* {currentDo && <DirectObjectResultTable resultsDo={resultsDo} />} */}
-
-      {/* ── Overhead Wire Result Table ── */}
-      {/* Temporarily hidden as per user request */}
-      {/* {currentOhw && <OverheadWireResultTable resultsOhw={resultsOhw} />} */}
-
-      {/* ── Arm Result Table ── */}
-      {/* Temporarily hidden as per user request */}
-      {/* {currentArm && <ArmResultTable resultsArm={resultsArm} />} */}
-
-      {/* ── Arm Object Result Tables — one per arm ── */}
-      {/* Temporarily hidden as per user request */}
-      {/* {resultsArm?.map((arm, armIndex) => (
-        <ArmObjectResultTable
-          key={arm.armNum ?? armIndex}
-          arm={arm}
-          armIndex={armIndex}
-        />
-      ))} */}
-
-      {/* ── Divider ── */}
-      {/* {hasResults && (currentDo || currentOhw || currentArm) && <div className="border-t border-gray-200 my-8" />} */}
-
-      {/* ── Summary Table ── */}
-      {hasResults && (
+      {/* ── Old JIL Evaluation Summary Table ── */}
+      {hasResults ? (
         <SummaryResultTable
           resultPole={results}
           display={display}
           calculationKey={calculationKey}
         />
-      )}
-
-      {/* ── Empty State ── */}
-      {!hasResults && (
-        <div className="p-16 text-center">
-          <FileSpreadsheet className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <p className="text-gray-400">
-            No calculation results yet. Please input pole data and click
-            Calculate.
+      ) : (
+        <div className="p-12 text-center">
+          <FileSpreadsheet className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-400 text-xs md:text-sm">
+            No calculation results yet. Please input pole data and click Calculate Results.
           </p>
         </div>
       )}
@@ -102,148 +47,8 @@ export function ResultsTableView({
   );
 }
 
-// ─── PROP TYPES ──────────────────────────────────────────────────────────────
-// Dokumentasi tipe data dan satuan variabel teknik yang diperlukan
-// untuk merender tabel hasil analisis struktur.
-
 ResultsTableView.propTypes = {
-  // ── Pole (Step Pole) ──
-  results: PropTypes.arrayOf(
-    PropTypes.shape({
-      name: PropTypes.string,
-      type: PropTypes.string,
-      upperDiameter: PropTypes.number,
-      lowerDiameter: PropTypes.number,
-      upperThickness: PropTypes.number,
-      lowerThickness: PropTypes.number,
-      length: PropTypes.number,
-      zHeight: PropTypes.number,
-      centerPoint: PropTypes.number,
-      fb: PropTypes.number,
-      stb: PropTypes.number,
-      sts: PropTypes.number,
-      stc: PropTypes.number,
-      sectionArea: PropTypes.number,
-      sectionModulus: PropTypes.number,
-      momentInertia: PropTypes.number,
-      radiusGyration: PropTypes.number,
-      taperRatio: PropTypes.number,
-      material: PropTypes.string,
-      ip: PropTypes.number,
-      heightSection: PropTypes.number,
-      typeofTaper: PropTypes.string,
-    }),
-  ).isRequired,
-
-  // ── Direct Object ──
-  resultsDo: PropTypes.arrayOf(
-    PropTypes.shape({
-      name: PropTypes.string,
-      type: PropTypes.string,
-      frontArea: PropTypes.number,
-      sideArea: PropTypes.number,
-      weight: PropTypes.number,
-      zHeight: PropTypes.number,
-      nnC: PropTypes.number,
-      quantity: PropTypes.number,
-      fixAngle: PropTypes.number,
-      fixLoad: PropTypes.number,
-      cf: PropTypes.number,
-      windLoadAreaFront: PropTypes.number,
-      windLoadAreaSide: PropTypes.number,
-      seismicLoad: PropTypes.number,
-    }),
-  ).isRequired,
-
-  // ── Overhead Wire ──
-  resultsOhw: PropTypes.arrayOf(
-    PropTypes.shape({
-      name: PropTypes.string,
-      weight: PropTypes.number,
-      diameter: PropTypes.number,
-      zHeight: PropTypes.number,
-      span: PropTypes.number,
-      saggingRatio: PropTypes.number,
-      nnC: PropTypes.number,
-      fixAngle: PropTypes.number,
-      verticalAngle: PropTypes.number,
-      fixLoadKg: PropTypes.number,
-      fixLoadN: PropTypes.number,
-      Area: PropTypes.number,
-      cf: PropTypes.number,
-      windLoad: PropTypes.number,
-      seismicLoad: PropTypes.number,
-      pwFix: PropTypes.number,
-      pwStraight: PropTypes.number,
-      pwOblique: PropTypes.number,
-      tensionFix: PropTypes.number,
-      tensionStraight: PropTypes.number,
-      tensionOblique: PropTypes.number,
-      cosVerticalAngle: PropTypes.number,
-    }),
-  ).isRequired,
-
-  // ── Arm ──
-  resultsArm: PropTypes.arrayOf(
-    PropTypes.shape({
-      name: PropTypes.string,
-      material: PropTypes.string,
-      diameter: PropTypes.number,
-      thickness: PropTypes.number,
-      length: PropTypes.number,
-      expLength: PropTypes.number,
-      zHeight: PropTypes.number,
-      hDistance: PropTypes.number,
-      fixAngle: PropTypes.number,
-      nnC: PropTypes.number,
-      quantity: PropTypes.number,
-      fb: PropTypes.number,
-      sfb: PropTypes.number,
-      sfs: PropTypes.number,
-      sfc: PropTypes.number,
-      sectionArea: PropTypes.number,
-      sectionModulus: PropTypes.number,
-      momentInertia: PropTypes.number,
-      ip: PropTypes.number,
-      radiusGyration: PropTypes.number,
-      massaM: PropTypes.number,
-      massa: PropTypes.number,
-      fixLoadM: PropTypes.number,
-      fixLoad: PropTypes.number,
-      frontArea: PropTypes.number,
-      sideArea: PropTypes.number,
-      frontAreaMM: PropTypes.number,
-      sideAreaMM: PropTypes.number,
-      windLoadAreaFront: PropTypes.number,
-      seismicLoad: PropTypes.number,
-      windLoadAreaSide: PropTypes.number,
-      momentFix: PropTypes.number,
-      momentWind: PropTypes.number,
-      momentSeismic: PropTypes.number,
-
-      // ── Arm Object (nested) ──
-      armObjects: PropTypes.arrayOf(
-        PropTypes.shape({
-          name: PropTypes.string,
-          type: PropTypes.string,
-          frontArea: PropTypes.number,
-          sideArea: PropTypes.number,
-          weight: PropTypes.number,
-          hDistance: PropTypes.number,
-          zHeight: PropTypes.number,
-          fixAngle: PropTypes.number,
-          nnC: PropTypes.number,
-          quantity: PropTypes.number,
-          fixLoad: PropTypes.number,
-          cf: PropTypes.number,
-          windLoadAreaFront: PropTypes.number,
-          windLoadAreaSide: PropTypes.number,
-          seismicLoad: PropTypes.number,
-          momentFix: PropTypes.number,
-          momentWind: PropTypes.number,
-          momentSeismic: PropTypes.number,
-        }),
-      ),
-    }),
-  ),
+  results: PropTypes.arrayOf(PropTypes.object),
+  display: PropTypes.object,
+  calculationKey: PropTypes.number,
 };

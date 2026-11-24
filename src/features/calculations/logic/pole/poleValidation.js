@@ -7,7 +7,6 @@ import { OverheadWireSchema } from "../../schemas/pole/custom/OverheadWireSchema
 import { ArmSchema } from "../../schemas/pole/custom/ArmSchema";
 import { ArmObjectSchema } from "../../schemas/pole/custom/ArmObjectSchema";
 import { PoleTypeSchema } from "../../schemas/pole/standard/PoleTypeSchema";
-import { StraightTypeSchema } from "../../schemas/pole/standard/StraightTypeSchema";
 import { TaperTypeSchema } from "../../schemas/pole/standard/TaperTypeSchema";
 import { StandardDirectObjectSchema } from "../../schemas/pole/standard/StandardDirectObjectSchema";
 
@@ -278,25 +277,8 @@ export async function validatePoleForm({
     }
   }
 
-  // ── 3. Step Pole Standard (straight standard) ──
-  if (isStandard && isStraight) {
-    const { isValid, errors } = await validateWithYup(
-      StraightTypeSchema(condition),
-      straightPoleStandard,
-    );
-
-    if (!isValid) {
-      return {
-        isValid: false,
-        straightPoleStandardErrors: errors,
-        message:
-          "Please correct the errors in Stepped Pole Type Specifications fields.",
-      };
-    }
-  }
-
-  // ── 3b. Taper Pole Standard (taper standard) ──
-  if (isStandard && !isStraight) {
+  // ── 3. Taper Pole Standard (standard mode) ──
+  if (isStandard) {
     const { isValid, errors } = await validateWithYup(
       TaperTypeSchema(condition),
       taperPoleStandard,
