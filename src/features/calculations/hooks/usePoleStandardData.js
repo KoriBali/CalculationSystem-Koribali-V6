@@ -1,3 +1,24 @@
+// src/features/calculations/hooks/usePoleStandardData.js
+/**
+ * ============================================================================
+ * POLE STANDARD DATA HOOK (usePoleStandardData)
+ * ============================================================================
+ * Mengambil dan mengelola data master standar tiang penerangan jalan (Road Lighting Pole)
+ * dari backend API (/api/master/pole-standards) dengan fallback otomatis ke
+ * data katalog statis (specStandardPole.json).
+ *
+ * ALUR PENGAMBILAN DATA (DATA FLOW):
+ * 1. Hook memanggil getPoleStandardData() dari poleStandardService.
+ * 2. Cek sessionStorage ('poleStandardData') dengan cache TTL 1 jam.
+ * 3. Jika cache kosong/expired, fetch GET /api/master/pole-standards.
+ * 4. Data dari backend dinormalisasi menjadi:
+ *    - poleStandardOptions: Daftar tipe tiang (IS, IA, LS, LA, TS, TA)
+ *    - heightOptionsByStandard: Daftar tinggi tiang per tipe & posisi tanah (onGL / underGL)
+ * 5. Jika backend offline/gagal, otomatis menggunakan fallback dari specStandardPole.json
+ *    sehingga UI tetap dapat menampilkan spesifikasi dan gambar tiang secara lengkap.
+ * ============================================================================
+ */
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getPoleStandardData,
@@ -5,49 +26,22 @@ import {
 } from "../services/poleStandardService";
 import STANDARD_POLE_DATA from "../data/specStandardPole.json";
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// ─── 1. HELPER PARSERS ────────────────────────────────────────────────────────
 
-// "Type-I (IS)" -> "IS" — the short code baked into local image maps
-// (DIAGRAM_IMAGE_MAP in TaperTypeForm.jsx) and other unrelated local logic,
-// so it must keep matching those exactly.
-const extractShortCode = (name) => {
+/**
+ * Mengekstrak kode singkat dari format nama standar (misal "Type-I (IS)" -> "IS")
+ * Digunakan untuk mencocokkan key skematik gambar SVG dan katalog dimensi.
+ */
+export const extractShortCode = (name) => {
+  if (!name) return "";
   const match = name.match(/\(([^)]+)\)/);
   return match ? match[1] : name;
 };
 
-function deriveStraightOptions(straightEntry) {
-  if (!straightEntry) {
-    return { steppedPoleOptions: [], combinationGroups: [], combinations: {}, tplMap: {} };
-  }
-
-  const combinationGroups = straightEntry.poleDiameters.map((d) => String(d.diameter));
-
-  const combinations = {};
-  const tplMap = {};
-  straightEntry.poleDiameters.forEach((d) => {
-    const group = String(d.diameter);
-    combinations[group] = d.poleCombinations.map((c) => c.name);
-
-    const [prefix] = (d.poleCombinations[0]?.name || "").split("-");
-    if (prefix && d.poleCombinations[0]) {
-      tplMap[prefix] = d.poleCombinations[0].poleThicknesses
-        .filter((t) => t.position === "lower")
-        .map((t) => t.thickness);
-    }
-  });
-
-  return {
-    // id stays the fixed "steppedPole" literal — StraightTypeForm.jsx compares
-    // straightPoleStandard.poleType === "steppedPole" directly.
-    steppedPoleOptions: [{ id: "steppedPole", label: straightEntry.name }],
-    combinationGroups,
-    combinations,
-    tplMap,
-  };
-}
-
-// Fallback heights derived from specStandardPole.json in case API is unavailable
-// or has missing height entries.
+/**
+ * Menyusun daftar pilihan ketinggian tiang dari data katalog fallback (specStandardPole.json)
+ * saat backend master data belum tersedia atau offline.
+ */
 function deriveFallbackHeightOptions() {
   const result = {};
   const tapered =
@@ -59,20 +53,30 @@ function deriveFallbackHeightOptions() {
 
     const isTypeWith100 = shortCode !== "IS" && shortCode !== "IA";
     if (isTypeWith100) {
-      // For LS, LA, TS, TA: prefer the +100mm heights (e.g. 4.6, 5.1, 8.1, 10.1, 12.1 for onGL; 4.9, 5.4, 8.4, 10.4, 12.4 for underGL)
-      const has100OnGL = onGLKeys.some((k) => String(k).includes(".1") || String(k).includes(".6"));
+      // Untuk tipe lengan (LS, LA, TS, TA): prioritaskan varian ketinggian nominal arm
+      const has100OnGL = onGLKeys.some(
+        (k) => String(k).includes(".1") || String(k).includes(".6"),
+      );
       if (has100OnGL) {
-        onGLKeys = onGLKeys.filter((k) => String(k).includes(".1") || String(k).includes(".6"));
+        onGLKeys = onGLKeys.filter(
+          (k) => String(k).includes(".1") || String(k).includes(".6"),
+        );
       }
-      const has100UnderGL = underGLKeys.some((k) => String(k).includes(".4") || String(k).includes(".9"));
+      const has100UnderGL = underGLKeys.some(
+        (k) => String(k).includes(".4") || String(k).includes(".9"),
+      );
       if (has100UnderGL) {
-        underGLKeys = underGLKeys.filter((k) => String(k).includes(".4") || String(k).includes(".9"));
+        underGLKeys = underGLKeys.filter(
+          (k) => String(k).includes(".4") || String(k).includes(".9"),
+        );
       }
     }
 
     const toOption = (k) => ({
       id: String(k),
+      heightId: null,
       label: `${Math.round(Number(k) * 1000)} mm`,
+      displayMeter: `${Math.round(Number(k))} m`,
     });
 
     result[shortCode] = {
@@ -84,6 +88,9 @@ function deriveFallbackHeightOptions() {
   return result;
 }
 
+/**
+ * Menyusun daftar opsi tipe tiang standar (IS, IA, LS, LA, TS, TA)
+ */
 function deriveTaperOptions(taperEntries) {
   if (!taperEntries || taperEntries.length === 0) {
     const tapered =
@@ -98,21 +105,21 @@ function deriveTaperOptions(taperEntries) {
     };
     return Object.keys(tapered).map((shortCode) => ({
       id: shortCode,
-      label: fullNameMap[shortCode] || shortCode,
+      label: fullNameMap[shortCode] || `Type-${shortCode} (${shortCode})`,
     }));
   }
 
   return taperEntries.map((entry) => ({
     id: extractShortCode(entry.name),
     label: entry.name,
+    backendId: entry.id,
   }));
 }
 
-// The API returns a flat list of heights per taper standard with no ground
-// position field — e.g. Type-I (IS): [8000, 10000, 12000, 8300, 10300, 12300]
-// in mm (or [8, 10, 12, 8.3, 10.3, 12.3] in m).
-// Ground position is paired via underGL = onGL + 0.3.
-// id is String(height in meters) matching keys in specStandardPole.json (e.g. "8", "8.3").
+/**
+ * Menyusun pemetaan ketinggian tiang dari entitas master data backend
+ * Memetakan ketinggian On GL dan Under GL (selisih kedalaman tanam 0.3m).
+ */
 function deriveHeightOptions(taperEntries) {
   const fallback = deriveFallbackHeightOptions();
   if (!taperEntries || taperEntries.length === 0) {
@@ -138,7 +145,6 @@ function deriveHeightOptions(taperEntries) {
     });
 
     const heightSet = new Set(heights.map((h) => Math.round(h * 10)));
-
     const onGL = [];
     const underGL = [];
 
@@ -157,6 +163,7 @@ function deriveHeightOptions(taperEntries) {
       id: String(h),
       heightId: heightMap.get(Math.round(h * 10)) || null,
       label: `${Math.round(h * 1000)} mm`,
+      displayMeter: `${Math.round(h)} m`,
     });
 
     if (onGL.length > 0 || underGL.length > 0) {
@@ -170,22 +177,24 @@ function deriveHeightOptions(taperEntries) {
   return result;
 }
 
-// ─── HOOK ────────────────────────────────────────────────────────────────────
+// ─── 2. MAIN HOOK ─────────────────────────────────────────────────────────────
 
-// Loads pole standard master data (stepped pole diameters/combinations/
-// thicknesses, taper pole type labels and heights) from /api/master/pole-standards.
 export function usePoleStandardData() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Eksekusi pengambilan data master dari service
   const runFetch = useCallback(() => {
     getPoleStandardData()
       .then((result) => {
         setData(result);
         setError(null);
       })
-      .catch((err) => setError(err))
+      .catch((err) => {
+        console.warn("Using local standard pole fallback data:", err?.message);
+        setError(err);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -193,6 +202,7 @@ export function usePoleStandardData() {
     runFetch();
   }, [runFetch]);
 
+  // Fungsi untuk membersihkan cache sessionStorage dan fetch ulang jika diperlukan
   const refetch = useCallback(() => {
     clearPoleStandardCache();
     setLoading(true);
@@ -200,26 +210,20 @@ export function usePoleStandardData() {
     runFetch();
   }, [runFetch]);
 
-  const straightEntry = useMemo(
-    () => data?.find((item) => item.type === "straight"),
-    [data],
-  );
+  // Filter khusus standar tiang taper (IS, IA, LS, LA, TS, TA)
   const taperEntries = useMemo(
     () =>
       data?.filter(
-        (item) => item.type === "taper" || item.type === "tapered"
+        (item) => item.type === "taper" || item.type === "tapered",
       ) || [],
     [data],
   );
 
-  const { steppedPoleOptions, combinationGroups, combinations, tplMap } = useMemo(
-    () => deriveStraightOptions(straightEntry),
-    [straightEntry],
-  );
   const poleStandardOptions = useMemo(
     () => deriveTaperOptions(taperEntries),
     [taperEntries],
   );
+
   const heightOptionsByStandard = useMemo(
     () => deriveHeightOptions(taperEntries),
     [taperEntries],
@@ -230,10 +234,6 @@ export function usePoleStandardData() {
     loading,
     error,
     refetch,
-    steppedPoleOptions,
-    combinationGroups,
-    combinations,
-    tplMap,
     poleStandardOptions,
     heightOptionsByStandard,
   };

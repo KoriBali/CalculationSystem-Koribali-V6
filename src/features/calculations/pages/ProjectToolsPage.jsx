@@ -1,19 +1,57 @@
 // src/features/calculations/pages/ProjectToolsPage.jsx
+/**
+ * ============================================================================
+ * POLE TYPE CONFIGURATION PAGE (ProjectToolsPage)
+ * ============================================================================
+ * Halaman pemilihan konfigurasi tiang standar (Road Lighting Pole Standard)
+ * atau custom mode sebelum masuk ke tahapan kalkulasi struktural (/project-tools/structural).
+ *
+ * ARSITEKTUR & ALUR DATA (DATA RESOLUTION FLOW):
+ * 1. Default State:
+ *    - Semua input awal berstatus KOSONG / UNSELECTED (mati):
+ *      selectedStandard = "", installationType = "", lowestHeightPosition = "",
+ *      embedmentLength = "", selectedHeight = "".
+ * 2. Toggle / Unselect Behavior:
+ *    - Semua tombol pilihan (Pole Standard, Installation, Position, Height) bersifat
+ *      toggleable: jika opsi yang sedang aktif diklik kembali, opsi tersebut akan
+ *      menjadi unselected (kosong) dan mereset pilihan turunannya.
+ * 3. Validasi Pemilihan Bertahap:
+ *    - Jika user mencoba mengklik "Select Installation Type" sebelum memilih
+ *      "Select Pole Standard Type", sistem menolak aksi tersebut dan memunculkan
+ *      pesan kesalahan validasi: "* Select a pole standard type first."
+ * 4. Sumber Data Master (BE API vs Fallback Catalog):
+ *    - Data master standar tiang diambil via usePoleStandardData() dari endpoint BE
+ *      (/api/master/pole-standards).
+ *    - Jika backend offline, sistem secara otomatis fallback ke specStandardPole.json
+ *      sehingga seluruh spesifikasi (diameter atas/bawah, ketebalan, material STK400,
+ *      arm, beban lampu/direct objects, skematik gambar SVG) tetap berfungsi penuh.
+ * 5. Logika Transisi Mode (Standard vs Custom):
+ *    - CUSTOM MODE: Jika user membiarkan pole standard kosong (""), tombol NEXT aktif.
+ *      Ketika diklik, aplikasi menginisialisasi parameter tiang custom default.
+ *    - STANDARD MODE: Jika user memilih salah satu tipe standar (IS, IA, LS, LA, TS, TA),
+ *      tombol NEXT dinonaktifkan (disabled) sampai seluruh isian wajib terpenuhi
+ *      (Installation Type -> Ground Position / Embedment Length -> Pole Height).
+ * 6. Tampilan Wireframe (Zero Decorative Colors):
+ *    - Menggunakan palet monokromatik netral (hitam, putih, abu-abu wireframe).
+ *    - Tombol Reset mempertahankan ikon RotateCcw dengan styling wireframe netral.
+ * ============================================================================
+ */
+
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet";
 import { CheckCircle2, Circle, RotateCcw, ArrowRight } from "lucide-react";
+import { usePoleStandardData } from "../hooks/usePoleStandardData";
 import STANDARD_POLE_DATA from "../data/specStandardPole.json";
 import {
   DIAGRAM_IMAGE_MAP,
   EMBED_IMAGE_MAP,
   DIAGRAM_LABEL_LAYOUT,
   getDiagramLabels,
-  DEFAULT_HEIGHT_GAP_PX,
 } from "../components/forms/pole/standard/taperDiagramConstants";
 
-// Available Road Lighting Pole standard types
-const STANDARD_POLE_TYPES = [
+// ─── 1. STATIC MASTER DATA CONFIGURATION ──────────────────────────────────────
+const FALLBACK_POLE_TYPES = [
   { id: "IS", label: "Type-I (IS)" },
   { id: "IA", label: "Type-I (IA)" },
   { id: "LS", label: "Type-L (LS)" },
@@ -25,14 +63,18 @@ const STANDARD_POLE_TYPES = [
 export default function ProjectToolsPage() {
   const navigate = useNavigate();
 
-  // Selection states (empty by default for Custom mode)
-  const [selectedStandard, setSelectedStandard] = useState("");
-  const [installationType, setInstallationType] = useState("baseplate"); // 'baseplate' | 'embedment'
-  const [lowestHeightPosition, setLowestHeightPosition] = useState("onGL"); // 'onGL' | 'underGL'
-  const [embedmentLength, setEmbedmentLength] = useState("1800");
-  const [selectedHeight, setSelectedHeight] = useState("");
+  // Pengambilan data master standar dari backend API (dengan fallback katalog otomatis)
+  const { poleStandardOptions } = usePoleStandardData();
 
-  // Ensure default backend project parameters on mount
+  // ─── 2. COMPONENT STATE (DEFAULT ALL UNSELECTED / EMPTY) ────────────────────
+  const [selectedStandard, setSelectedStandard] = useState("");
+  const [installationType, setInstallationType] = useState(""); // 'baseplate' | 'embedment' | ''
+  const [lowestHeightPosition, setLowestHeightPosition] = useState(""); // 'onGL' | 'underGL' | ''
+  const [embedmentLength, setEmbedmentLength] = useState(""); // String angka, tanpa default 1800
+  const [selectedHeight, setSelectedHeight] = useState(""); // Tidak ada auto-select default
+  const [installationError, setInstallationError] = useState(""); // Pesan error jika klik installation sebelum standard
+
+  // Pastikan parameter workflow project tersimpan di sessionStorage saat halaman dimuat
   useEffect(() => {
     sessionStorage.setItem("projectType", "lighting-project");
     sessionStorage.setItem("projectMode", "calculation");
@@ -45,20 +87,34 @@ export default function ProjectToolsPage() {
     );
   }, []);
 
-  // Compute available heights based on selected standard and ground position
+  // Opsi tipe tiang standar (mengutamakan opsi dari backend jika tersedia)
+  const standardTypes = useMemo(() => {
+    return poleStandardOptions && poleStandardOptions.length > 0
+      ? poleStandardOptions
+      : FALLBACK_POLE_TYPES;
+  }, [poleStandardOptions]);
+
+  // ─── 3. COMPUTED SPECIFICATIONS & HEIGHT OPTIONS ───────────────────────────
+  // Menentukan kunci posisi tanah untuk query katalog data standar
+  const effectiveGroundKey = useMemo(() => {
+    if (installationType === "embedment") return "onGL";
+    if (installationType === "baseplate" && lowestHeightPosition) {
+      return lowestHeightPosition;
+    }
+    return null;
+  }, [installationType, lowestHeightPosition]);
+
+  // Daftar ketinggian yang tersedia berdasarkan tipe tiang dan posisi tanah yang dipilih
   const availableHeights = useMemo(() => {
-    if (!selectedStandard) return [];
+    if (!selectedStandard || !effectiveGroundKey) return [];
+
     const taper = STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
     const group = taper[selectedStandard] || {};
-    const groundKey =
-      installationType === "embedment" ? "onGL" : lowestHeightPosition;
-    const entries = group[groundKey] || {};
+    const entries = group[effectiveGroundKey] || {};
 
     const rawKeys = Object.keys(entries);
-    // Sort heights numerically
     const sorted = [...rawKeys].sort((a, b) => Number(a) - Number(b));
 
-    // Prefer clean heights
     return sorted.map((key) => {
       const numM = Number(key);
       const isUnderGL =
@@ -72,90 +128,203 @@ export default function ProjectToolsPage() {
         displayLabel,
       };
     });
-  }, [selectedStandard, installationType, lowestHeightPosition]);
+  }, [selectedStandard, effectiveGroundKey, installationType, lowestHeightPosition]);
 
-  // If selected height is not in available heights when standard changes, auto-select first or clear
+  // Menjaga agar selectedHeight hanya dibersihkan jika tidak lagi valid
+  // (TIDAK melakukan auto-select; user wajib memilih sendiri)
   useEffect(() => {
-    if (availableHeights.length > 0) {
-      const match = availableHeights.find((h) => h.key === selectedHeight);
-      if (!match) {
-        setSelectedHeight(availableHeights[0].key);
+    if (selectedHeight) {
+      const exists = availableHeights.some((h) => h.key === selectedHeight);
+      if (!exists) {
+        setSelectedHeight("");
       }
-    } else {
-      setSelectedHeight("");
     }
   }, [availableHeights, selectedHeight]);
 
-  // Diagram image resolution
+  // ─── 4. DIAGRAM IMAGE & SCHEMATIC OVERLAY RESOLUTION ─────────────────────────
+  // Gambar diagram SVG berdasarkan tipe tiang dan mode instalasi
   const currentImage = useMemo(() => {
-    if (!selectedStandard) return null;
+    if (!selectedStandard || !installationType) return null;
     if (installationType === "embedment") {
       return EMBED_IMAGE_MAP[selectedStandard] || null;
     }
-    const groundKey =
-      lowestHeightPosition === "underGL" ? "underGL" : "onGL";
-    return DIAGRAM_IMAGE_MAP[selectedStandard]?.[groundKey] || null;
+    if (installationType === "baseplate" && lowestHeightPosition) {
+      return DIAGRAM_IMAGE_MAP[selectedStandard]?.[lowestHeightPosition] || null;
+    }
+    return null;
   }, [selectedStandard, installationType, lowestHeightPosition]);
 
-  const effectiveGroundPosition =
+  // Posisi ground untuk perhitungan tata letak dimensi diagram
+  const effectiveGroundPositionForDiagram =
     installationType === "embedment" ? "embedment" : lowestHeightPosition;
 
-  // Diagram labels with dimensions
+  // Label dimensi angka dan spesifikasi teknis tiang pada diagram
   const diagramLabels = useMemo(() => {
-    if (!selectedStandard || !selectedHeight) return null;
+    if (
+      !selectedStandard ||
+      !effectiveGroundPositionForDiagram ||
+      !selectedHeight
+    ) {
+      return null;
+    }
     return getDiagramLabels(
       selectedStandard,
-      effectiveGroundPosition,
+      effectiveGroundPositionForDiagram,
       selectedHeight,
       null,
     );
-  }, [selectedStandard, effectiveGroundPosition, selectedHeight]);
+  }, [selectedStandard, effectiveGroundPositionForDiagram, selectedHeight]);
 
+  // Konfigurasi viewBox dan koordinat anchor diagram SVG
   const diagramLayout = useMemo(() => {
-    if (!selectedStandard) return null;
+    if (!selectedStandard || !effectiveGroundPositionForDiagram) return null;
     return (
       DIAGRAM_LABEL_LAYOUT[
-        `${selectedStandard}.${effectiveGroundPosition}`
+        `${selectedStandard}.${effectiveGroundPositionForDiagram}`
       ] || null
     );
-  }, [selectedStandard, effectiveGroundPosition]);
+  }, [selectedStandard, effectiveGroundPositionForDiagram]);
 
-  // Reset all selections back to empty
-  const handleReset = () => {
-    setSelectedStandard("");
-    setInstallationType("baseplate");
-    setLowestHeightPosition("onGL");
-    setEmbedmentLength("1800");
-    setSelectedHeight("");
-  };
-
-  // Next Button state logic:
-  // - If standard is empty -> Next is ENABLED (Custom mode)
-  // - If standard is selected -> Next is DISABLED until all required fields are filled
+  // ─── 5. FORM VALIDATION & NEXT READINESS LOGIC ─────────────────────────────
+  /**
+   * Aturan Validasi Tombol Next:
+   * 1. Jika selectedStandard KOSONG -> User memilih Custom Mode.
+   *    Tombol Next LANGSUNG AKTIF (enabled).
+   * 2. Jika selectedStandard DIPILIH -> User memilih Standard Mode.
+   *    Tombol Next DINONAKTIFKAN (disabled) sampai seluruh isian lengkap:
+   *    - installationType harus dipilih ('baseplate' atau 'embedment')
+   *    - jika baseplate -> lowestHeightPosition harus dipilih ('onGL' atau 'underGL')
+   *    - jika embedment -> embedmentLength harus diisi angka > 0
+   *    - selectedHeight harus dipilih (misal: 8m, 10m, atau 12m)
+   */
   const isFormComplete = useMemo(() => {
+    // Mode Custom: diizinkan langsung next tanpa spesifikasi standar
     if (!selectedStandard) {
-      // Empty standard = Custom mode is permitted immediately
       return true;
     }
-    // Standard mode requires installation, height, and embedment if applicable
-    if (!selectedHeight) return false;
-    if (installationType === "embedment" && (!embedmentLength || Number(embedmentLength) <= 0)) {
-      return false;
-    }
-    return true;
-  }, [selectedStandard, selectedHeight, installationType, embedmentLength]);
 
-  // Handle Proceed to Structural step
+    // Mode Standard: seluruh field wajib diisi lengkap
+    if (!installationType) return false;
+
+    if (installationType === "baseplate") {
+      if (!lowestHeightPosition) return false;
+    } else if (installationType === "embedment") {
+      if (!embedmentLength || Number(embedmentLength) <= 0) return false;
+    }
+
+    if (!selectedHeight) return false;
+
+    return true;
+  }, [
+    selectedStandard,
+    installationType,
+    lowestHeightPosition,
+    embedmentLength,
+    selectedHeight,
+  ]);
+
+  // ─── 6. EVENT HANDLERS (TOGGLE & VALIDATION GUARD) ──────────────────────────
+
+  /**
+   * Pemilihan Tipe Standar Tiang (IS, IA, LS, LA, TS, TA)
+   * Mendukung Unselect: Mengklik item yang sedang aktif akan mereset kembali ke kosong.
+   */
+  const handleSelectStandard = (typeId) => {
+    if (selectedStandard === typeId) {
+      // Toggle off / unselect: reset seluruh state downstream
+      setSelectedStandard("");
+      setInstallationType("");
+      setLowestHeightPosition("");
+      setEmbedmentLength("");
+      setSelectedHeight("");
+      setInstallationError("");
+    } else {
+      // Pilih standar baru: bersihkan error validasi dan tinggi sebelumnya
+      setSelectedStandard(typeId);
+      setSelectedHeight("");
+      setInstallationError("");
+    }
+  };
+
+  /**
+   * Pemilihan Tipe Instalasi (Baseplate / Embedment)
+   * Guard: Wajib memilih pole standard type terlebih dahulu.
+   * Mendukung Unselect: Mengklik item aktif akan mereset instalasi.
+   */
+  const handleSelectInstallation = (typeId) => {
+    if (!selectedStandard) {
+      setInstallationError("* Select a pole standard type first.");
+      return;
+    }
+    setInstallationError("");
+
+    if (installationType === typeId) {
+      // Toggle off / unselect
+      setInstallationType("");
+      setLowestHeightPosition("");
+      setEmbedmentLength("");
+      setSelectedHeight("");
+    } else {
+      // Pilih instalasi baru
+      setInstallationType(typeId);
+      setLowestHeightPosition("");
+      setEmbedmentLength("");
+      setSelectedHeight("");
+    }
+  };
+
+  /**
+   * Pemilihan Posisi Ketinggian Terbawah untuk Baseplate (On GL / Under GL)
+   * Mendukung Unselect: Mengklik item aktif akan mereset pilihan posisi.
+   */
+  const handleSelectPosition = (posId) => {
+    if (lowestHeightPosition === posId) {
+      // Toggle off / unselect
+      setLowestHeightPosition("");
+      setSelectedHeight("");
+    } else {
+      setLowestHeightPosition(posId);
+      setSelectedHeight("");
+    }
+  };
+
+  /**
+   * Pemilihan Ketinggian Tiang (8m, 10m, 12m, dll)
+   * Mendukung Unselect: Mengklik tinggi aktif akan mereset pilihan tinggi.
+   */
+  const handleSelectHeight = (heightKey) => {
+    if (selectedHeight === heightKey) {
+      // Toggle off / unselect
+      setSelectedHeight("");
+    } else {
+      setSelectedHeight(heightKey);
+    }
+  };
+
+  /**
+   * Reset Menyeluruh: Mengembalikan semua state ke kondisi kosong / mati
+   */
+  const handleReset = () => {
+    setSelectedStandard("");
+    setInstallationType("");
+    setLowestHeightPosition("");
+    setEmbedmentLength("");
+    setSelectedHeight("");
+    setInstallationError("");
+  };
+
+  // ─── 7. STEP NAVIGATION & PERSISTENCE ───────────────────────────────────────
   const handleNext = () => {
     const isStandard = Boolean(selectedStandard);
 
     if (isStandard) {
-      // STANDARD MODE
-      const taper = STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
-      const groundKey =
-        installationType === "embedment" ? "onGL" : lowestHeightPosition;
-      const entry = taper[selectedStandard]?.[groundKey]?.[selectedHeight] || {};
+      // ── MODE STANDARD ──
+      const taper =
+        STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
+      const entry =
+        taper[selectedStandard]?.[effectiveGroundKey]?.[selectedHeight] || {};
 
+      // Ekstraksi spesifikasi segmen tiang standar
       const rawPoles = entry.poles || [];
       const resolvedPoles = rawPoles.map((p, idx) => ({
         name: p.name || `支柱−${idx + 1}`,
@@ -165,10 +334,11 @@ export default function ProjectToolsPage() {
         upperDiameter: String(p.upperDiameter || "85"),
         lowerThickness: String(p.lowerThickness || "4"),
         upperThickness: String(p.upperThickness || "4"),
-        zHeight: String(p.zHeight || (Number(selectedHeight) * 1000)),
+        zHeight: String(p.zHeight || Number(selectedHeight) * 1000),
         quantity: String(p.quantity || "1"),
       }));
 
+      // Ekstraksi spesifikasi beban aksesoris / lampu (direct objects)
       const rawDirectObjects = entry.directObjects || [];
       const resolvedDo = rawDirectObjects.map((d) => ({
         name: d.name || "灯具",
@@ -176,7 +346,7 @@ export default function ProjectToolsPage() {
         frontArea: String(d.frontArea ?? "0.1"),
         sideArea: String(d.sideArea ?? "0.1"),
         weight: String(d.weight ?? "14"),
-        zHeight: String(d.zHeight ?? (Number(selectedHeight) * 1000)),
+        zHeight: String(d.zHeight ?? Number(selectedHeight) * 1000),
         nnC: String(d.nnC ?? "1"),
         quantity: String(d.quantity ?? "1"),
         fixAngle: String(d.fixAngle ?? "0"),
@@ -190,7 +360,7 @@ export default function ProjectToolsPage() {
             ? "300"
             : "0";
 
-      // Persist Standard session state
+      // Simpan konfigurasi lengkap standar ke sessionStorage untuk tahap kalkulasi struktural
       sessionStorage.setItem("projectType", "lighting-project");
       sessionStorage.setItem("projectMode", "calculation");
       sessionStorage.setItem(
@@ -261,7 +431,8 @@ export default function ProjectToolsPage() {
         JSON.stringify({ type: "taper" }),
       );
     } else {
-      // CUSTOM MODE
+      // ── MODE CUSTOM ──
+      // Default parameter awal untuk spesifikasi custom manual
       sessionStorage.setItem("projectType", "lighting-project");
       sessionStorage.setItem("projectMode", "calculation");
       sessionStorage.setItem(
@@ -271,9 +442,9 @@ export default function ProjectToolsPage() {
           designWindSpeed: "60",
           designAirDensity: "1.23",
           poleType: "custom",
-          installationPole: installationType,
+          installationPole: installationType || "baseplate",
           openingEnabled: true,
-          baseplateEnabled: installationType === "baseplate",
+          baseplateEnabled: installationType !== "embedment",
         }),
       );
       sessionStorage.setItem(
@@ -316,7 +487,8 @@ export default function ProjectToolsPage() {
       sessionStorage.setItem(
         "lighting-project_poleConfig",
         JSON.stringify({
-          lowestHeight: installationType === "embedment" ? embedmentLength : "0",
+          lowestHeight:
+            installationType === "embedment" ? (embedmentLength || "0") : "0",
           overDesign: "1",
         }),
       );
@@ -325,6 +497,7 @@ export default function ProjectToolsPage() {
     navigate("/project-tools/structural");
   };
 
+  // ─── 8. JSX RENDER VIEW (STRICT MONOCHROME WIREFRAME) ───────────────────────
   return (
     <div className="min-h-full flex flex-col bg-white">
       <Helmet>
@@ -342,11 +515,11 @@ export default function ProjectToolsPage() {
           </p>
         </div>
 
-        {/* Informational Banner */}
-        <div className="mb-6 px-4 py-2.5 rounded border border-amber-300 bg-amber-50/70 text-amber-900 text-xs md:text-sm flex items-center justify-between">
+        {/* Informational Wireframe Banner */}
+        <div className="mb-6 px-4 py-2.5 rounded border border-gray-300 bg-gray-50 text-gray-700 text-xs md:text-sm flex items-center justify-between">
           <p>
             If not using a Road Lighting Pole standard, click{" "}
-            <span className="font-bold text-amber-950">NEXT</span> to enter specifications manually.
+            <span className="font-bold text-gray-900">NEXT</span> to enter specifications manually.
           </p>
         </div>
 
@@ -360,24 +533,22 @@ export default function ProjectToolsPage() {
                 Select Pole Standard Type
               </label>
               <div className="flex flex-col gap-2">
-                {STANDARD_POLE_TYPES.map((type) => {
+                {standardTypes.map((type) => {
                   const isSelected = selectedStandard === type.id;
                   return (
                     <button
                       key={type.id}
                       type="button"
-                      onClick={() =>
-                        setSelectedStandard(isSelected ? "" : type.id)
-                      }
+                      onClick={() => handleSelectStandard(type.id)}
                       className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
                         isSelected
-                          ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
-                          : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
+                          ? "border-gray-900 bg-gray-100 text-gray-900 font-semibold shadow-sm"
+                          : "border-gray-300 hover:border-gray-400 text-gray-700 bg-white"
                       }`}
                     >
                       <span>{type.label}</span>
                       {isSelected ? (
-                        <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        <CheckCircle2 className="w-4 h-4 text-gray-900 flex-shrink-0" />
                       ) : (
                         <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                       )}
@@ -402,16 +573,16 @@ export default function ProjectToolsPage() {
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setInstallationType(item.id)}
+                      onClick={() => handleSelectInstallation(item.id)}
                       className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
                         isSelected
-                          ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
-                          : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
+                          ? "border-gray-900 bg-gray-100 text-gray-900 font-semibold shadow-sm"
+                          : "border-gray-300 hover:border-gray-400 text-gray-700 bg-white"
                       }`}
                     >
                       <span>{item.label}</span>
                       {isSelected ? (
-                        <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        <CheckCircle2 className="w-4 h-4 text-gray-900 flex-shrink-0" />
                       ) : (
                         <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                       )}
@@ -419,6 +590,12 @@ export default function ProjectToolsPage() {
                   );
                 })}
               </div>
+              {/* Validation Warning Hint */}
+              {installationError && (
+                <p className="text-xs text-red-600 font-medium mt-2">
+                  {installationError}
+                </p>
+              )}
             </div>
 
             {/* Section 3: Baseplate -> Lowest Height Position */}
@@ -437,16 +614,16 @@ export default function ProjectToolsPage() {
                       <button
                         key={pos.id}
                         type="button"
-                        onClick={() => setLowestHeightPosition(pos.id)}
+                        onClick={() => handleSelectPosition(pos.id)}
                         className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
                           isSelected
-                            ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
-                            : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
+                            ? "border-gray-900 bg-gray-100 text-gray-900 font-semibold shadow-sm"
+                            : "border-gray-300 hover:border-gray-400 text-gray-700 bg-white"
                         }`}
                       >
                         <span>{pos.label}</span>
                         {isSelected ? (
-                          <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                          <CheckCircle2 className="w-4 h-4 text-gray-900 flex-shrink-0" />
                         ) : (
                           <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                         )}
@@ -469,8 +646,8 @@ export default function ProjectToolsPage() {
                     min="0"
                     value={embedmentLength}
                     onChange={(e) => setEmbedmentLength(e.target.value)}
-                    placeholder="1800"
-                    className="w-full pl-3 pr-12 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-700 bg-white"
+                    placeholder="e.g. 1800"
+                    className="w-full pl-3 pr-12 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-900 bg-white text-gray-900"
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs md:text-sm pointer-events-none">
                     mm
@@ -492,6 +669,18 @@ export default function ProjectToolsPage() {
                 <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
                   Select a pole standard type first.
                 </div>
+              ) : !installationType ? (
+                <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
+                  Select an installation type first.
+                </div>
+              ) : installationType === "baseplate" && !lowestHeightPosition ? (
+                <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
+                  Select lowest height position first.
+                </div>
+              ) : availableHeights.length === 0 ? (
+                <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
+                  No height options available for this configuration.
+                </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {availableHeights.map((h) => {
@@ -500,10 +689,10 @@ export default function ProjectToolsPage() {
                       <button
                         key={h.key}
                         type="button"
-                        onClick={() => setSelectedHeight(h.key)}
+                        onClick={() => handleSelectHeight(h.key)}
                         className={`px-4 py-2 rounded border text-xs md:text-sm font-medium transition-all cursor-pointer ${
                           isSelected
-                            ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm"
+                            ? "border-gray-900 bg-gray-900 text-white shadow-sm"
                             : "border-gray-300 text-gray-700 hover:border-gray-400 bg-white"
                         }`}
                       >
@@ -517,7 +706,15 @@ export default function ProjectToolsPage() {
 
             {/* Diagram Preview Area */}
             <div className="border border-dashed border-gray-300 rounded p-4 flex-1 flex items-center justify-center min-h-[480px] lg:min-h-[580px] bg-white relative overflow-hidden">
-              {!selectedStandard || !currentImage ? (
+              {!selectedStandard || !installationType ? (
+                <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
+                  Select a standard to preview the pole.
+                </div>
+              ) : installationType === "baseplate" && !lowestHeightPosition ? (
+                <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
+                  Select lowest height position to preview the pole.
+                </div>
+              ) : !currentImage ? (
                 <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
                   Select a standard to preview the pole.
                 </div>
@@ -543,12 +740,12 @@ export default function ProjectToolsPage() {
                       className="w-full h-full object-contain pointer-events-none select-none"
                     />
 
-                    {/* Render Dimension Text Overlays */}
+                    {/* Render Dimension Text Overlays (Monochrome text-gray-900) */}
                     {diagramLabels?.map((label) => (
                       <div
                         key={`${label.key}:${label.lines.join("|")}`}
                         style={label.style}
-                        className={`absolute pointer-events-none whitespace-nowrap text-[11px] md:text-xs leading-none text-blue-700 font-medium ${
+                        className={`absolute pointer-events-none whitespace-nowrap text-[11px] md:text-xs leading-none text-gray-900 font-semibold ${
                           label.isCentered ? "text-center" : ""
                         }`}
                       >
@@ -570,14 +767,15 @@ export default function ProjectToolsPage() {
           </div>
         </div>
 
-        {/* ── BOTTOM ACTIONS ── */}
+        {/* ── BOTTOM ACTIONS (WIREFRAME STYLING) ── */}
         <div className="mt-6 flex items-center justify-between pt-4 border-t border-gray-200">
           <button
             type="button"
             onClick={handleReset}
-            className="px-4 py-2 border border-red-300 text-red-600 hover:bg-red-50 rounded text-xs md:text-sm font-medium cursor-pointer transition-colors"
+            className="px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 rounded text-xs md:text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5"
           >
-            Reset
+            <RotateCcw className="w-3.5 h-3.5 text-gray-600" />
+            <span>Reset</span>
           </button>
 
           <button
@@ -586,7 +784,7 @@ export default function ProjectToolsPage() {
             disabled={!isFormComplete}
             className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${
               isFormComplete
-                ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm"
+                ? "bg-gray-900 text-white hover:bg-gray-800 border border-gray-900 cursor-pointer shadow-sm"
                 : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
             }`}
           >
