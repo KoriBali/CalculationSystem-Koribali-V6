@@ -100,43 +100,24 @@ export default function Layout() {
   let currentTitle;
   if (location.pathname === "/project-tools") {
     currentTitle = "Project Tools";
-  } else if (projectToolsMatch) {
-    const typeSlug = projectToolsMatch[1];
-    const subStep = projectToolsMatch[2] || "setup";
-    const formattedType = formatProjectType(typeSlug);
-    const isDrawing = subStep.startsWith("drawing");
+  } else if (location.pathname.startsWith("/project-tools/")) {
+    const rawStep = location.pathname.replace("/project-tools/", "").split("/")[0];
+    const stepLabelMap = {
+      structural: "Structural",
+      opening: "Opening",
+      baseplate: "Baseplate",
+      foundation: "Foundation",
+      report: "Report",
+    };
+    const stepName =
+      stepLabelMap[rawStep] ||
+      (rawStep ? rawStep.charAt(0).toUpperCase() + rawStep.slice(1) : "Structural");
 
-    if (subStep === "setup") {
-      currentTitle = {
-        global: formattedType || "Lighting Project",
-        stage: "Setup",
-        substage: null,
-      };
-    } else {
-      const stepLabelMap = {
-        initial: "Initial",
-        pole: "Pole",
-        opening: "Opening",
-        baseplate: "Baseplate",
-        foundation: "Foundation",
-        report: "Report",
-        "drawing/drawing-setup": "Drawing Setup",
-        "drawing/pole": "Pole",
-        "drawing/opening": "Opening",
-        "drawing/baseplate": "Baseplate",
-        "drawing/foundation": "Foundation",
-        "drawing/coupling": "Coupling",
-        "drawing/surface": "Surface",
-      };
-
-      currentTitle = {
-        global: formattedType || "Lighting Project",
-        stage: isDrawing ? "Drawing" : "Calculations",
-        substage:
-          stepLabelMap[subStep] ||
-          (subStep.charAt(0).toUpperCase() + subStep.slice(1)),
-      };
-    }
+    currentTitle = {
+      global: stepName,
+      stage: null,
+      substage: null,
+    };
   } else if (requestDetailId) {
     const request = getRequest(requestDetailId);
     currentTitle = {
