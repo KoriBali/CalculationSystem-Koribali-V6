@@ -8,10 +8,6 @@ import React, {
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import LightingPoleReport from "../templates/lighting-pole/LightingPoleReport";
-import NewJilReport from "../templates/new-jil/NewJilReport";
-import AcemastReport from "../templates/acemast/AcemastReport";
-import SignboardReport from "../templates/signboard/SignboardReport";
-import MultipleReport from "../templates/multiple/MultipleReport";
 
 import { clearCalculationSession } from "../../../calculations/utils";
 import {
@@ -1100,75 +1096,16 @@ export function ReportView() {
       onRegenerateSchematic: handleRegenerateSchematic,
     };
 
-    switch (projectType) {
-      case "lighting-project": {
-        const std = String(condition?.designStandard || "").toLowerCase();
-        const isNewJil = std === "new_jil" || std === "new jil" || std.includes("new");
-
-        if (isNewJil) {
-          return (
-            <div id="report-a4">
-              <NewJilReport
-                {...commonProps}
-                calculatedOp={calculatedOp}
-                calculatedBaseplate={calculatedBaseplate}
-                calculatedFoundation={calculatedFoundation}
-              />
-            </div>
-          );
-        }
-
-        return (
-          <div id="report-a4">
-            <LightingPoleReport
-              {...commonProps}
-              calculatedOp={calculatedOp}
-              calculatedBaseplate={calculatedBaseplate}
-              calculatedFoundation={calculatedFoundation}
-            />
-          </div>
-        );
-      }
-
-      case "disaster-prevention-project":
-        return (
-          <div id="report-a4">
-            <AcemastReport
-              {...commonProps}
-              calculatedOp={calculatedOp}
-              calculatedBaseplate={calculatedBaseplate}
-              calculatedFoundation={calculatedFoundation}
-            />
-          </div>
-        );
-
-      case "signboard-project":
-        return (
-          <div id="report-a4">
-            <SignboardReport
-              {...commonProps}
-              calculatedOp={calculatedOp}
-              calculatedBaseplate={calculatedBaseplate}
-              calculatedFoundation={calculatedFoundation}
-            />
-          </div>
-        );
-
-      case "multi-purpose-project":
-        return (
-          <div id="report-a4">
-            <MultipleReport
-              {...commonProps}
-              calculatedOp={calculatedOp}
-              calculatedBaseplate={calculatedBaseplate}
-              calculatedFoundation={calculatedFoundation}
-            />
-          </div>
-        );
-
-      default:
-        return <div />;
-    }
+    return (
+      <div id="report-a4">
+        <LightingPoleReport
+          {...commonProps}
+          calculatedOp={calculatedOp}
+          calculatedBaseplate={calculatedBaseplate}
+          calculatedFoundation={calculatedFoundation}
+        />
+      </div>
+    );
   };
 
   // ── Empty state ──

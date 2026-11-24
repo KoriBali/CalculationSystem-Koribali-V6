@@ -697,11 +697,6 @@ export default function PoleFormView() {
             "
           >
             {/* Top accent strip — same gradient/style as ConditionForm's card strip */}
-            <div
-              aria-hidden="true"
-              className="h-1.5 bg-gradient-to-r from-[#0d3b66] to-[#3399cc]"
-            />
-
             {/* Expand / collapse header */}
             <button
               type="button"
@@ -1137,12 +1132,6 @@ export default function PoleFormView() {
                   overflow-hidden
                 "
               >
-                {/* Top accent */}
-                <div
-                  aria-hidden="true"
-                  className="h-1.5 bg-gradient-to-r from-[#0d3b66] to-[#3399cc]"
-                />
-
                 {/* Expand / collapse header */}
                 <button
                   type="button"
@@ -1283,12 +1272,6 @@ export default function PoleFormView() {
                   overflow-hidden
                 "
               >
-                {/* Top accent */}
-                <div
-                  aria-hidden="true"
-                  className="h-1.5 bg-gradient-to-r from-[#0d3b66] to-[#3399cc]"
-                />
-
                 {/* Expand / collapse header */}
                 <button
                   type="button"
@@ -1394,12 +1377,6 @@ export default function PoleFormView() {
                   overflow-hidden
                 "
               >
-                {/* Top accent */}
-                <div
-                  aria-hidden="true"
-                  className="h-1.5 bg-gradient-to-r from-[#0d3b66] to-[#3399cc]"
-                />
-
                 {/* Expand / collapse header */}
                 <button
                   type="button"
@@ -1496,8 +1473,8 @@ export default function PoleFormView() {
                           className={`flex justify-center items-center gap-2 p-2.5 sm:px-4 sm:py-2 md:px-5 lg:py-2 rounded-lg hp:rounded-md font-medium shadow-sm text-sm hp:text-xs hp:px-4 hp:self-center transition-all
                           ${
                             armForm.arms.length >= 10
-                              ? "bg-gray-300 text-black opacity-40 cursor-not-allowed"
-                              : "bg-gradient-to-r from-[#0d3b66] to-[#3399cc] text-white hover:scale-105"
+                              ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                              : "bg-gray-900 text-white hover:bg-gray-800"
                           }`}
                         >
                           <Plus className="w-3.5 sm:w-4 lg:w-4.5 h-3.5 sm:h-4 lg:h-4.5" />
@@ -1519,14 +1496,14 @@ export default function PoleFormView() {
                               key={arm.idArm}
                               type="button"
                               onClick={() => armForm.setActiveTabArm(arm.idArm)}
-                              className={`flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-lg border-[1.5px] text-sm font-medium transition-all
+                              className={`flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded border text-sm font-medium transition-colors
                                 hp:px-3 hp:py-1.5 hp:text-xs hp:rounded-md
                                 ${
                                   isActive
-                                    ? "border-blue-500 bg-blue-50 text-blue-700"
+                                    ? "border-2 border-gray-900 bg-gray-50 text-gray-900"
                                     : hasError
-                                      ? "border-red-300 bg-red-50/50 text-red-600 hover:bg-red-50"
-                                      : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 hover:border-gray-300"
+                                      ? "border-red-300 bg-red-50 text-red-600"
+                                      : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
                                 }`}
                             >
                               <span
@@ -1535,7 +1512,7 @@ export default function PoleFormView() {
                                   hasError && !isActive
                                     ? "bg-red-500"
                                     : isActive
-                                      ? "bg-blue-500"
+                                      ? "bg-gray-900"
                                       : "bg-gray-300"
                                 }`}
                               />
@@ -1556,10 +1533,7 @@ export default function PoleFormView() {
                         <div className="space-y-6 hp:space-y-4">
                           <div className="flex items-center justify-between mb-6 pb-6 border-b border-gray-200 hp:flex-col hp:items-start hp:gap-3 hp:mb-4 hp:pb-4">
                             <div className="flex items-center gap-2 hp:gap-1">
-                              {/* Accent bar */}
-                              <div className="w-1 h-8 rounded-full bg-gradient-to-b from-[#3399cc] to-[#3399cc] flex-shrink-0 hp:hidden" />
-
-                              <h4 className="text-[#0d3b66] text-sm font-semibold hp:text-xs">
+                              <h4 className="text-gray-900 text-sm font-semibold hp:text-xs">
                                 Arm {armForm.currentIndex + 1}
                                 {armForm.activeArm.name &&
                                   ` : ${armForm.activeArm.name}`}
@@ -1760,7 +1734,7 @@ export default function PoleFormView() {
           )}
 
           {/* ── Calculate / Finish footer ── */}
-          <div className="flex items-center justify-between p-5 mt-12 mb-20 bg-gradient-to-b from-white to-slate-50 rounded-2xl hp:rounded-xl border border-gray-200 shadow-sm hp:gap-2">
+          <div className="flex items-center justify-between p-5 mt-12 mb-20 bg-white rounded border border-gray-300 hp:gap-2">
             {/* Back => returns to Initial Input step */}
             <button
               onClick={() =>
@@ -1772,24 +1746,21 @@ export default function PoleFormView() {
               }
               disabled={isShowingCalcLoading}
               className="flex justify-center items-center gap-2 px-5 py-2.5 sm:py-2 lg:py-2.5 hp:px-3 hp:py-2 md:px-6
-              rounded-lg hp:rounded-md font-medium bg-[#eef2f6] hover:bg-[#e2e8f0] text-[#0d3b66] text-sm
-              ring-1 ring-inset ring-[#d0d7e2] hover:ring-[#b8c2d1] shadow-sm transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+              rounded font-medium bg-white hover:bg-gray-100 text-gray-700 text-sm
+              border border-gray-300 transition-colors flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <ChevronLeft className="w-4 md:w-5 h-4 md:h-5 hp:w-4 hp:h-4" />
               <span className="hp:hidden">Back</span>
             </button>
 
             <div className="flex items-center gap-3 hp:gap-0">
-              {/* Calculate button — steps aside to the secondary style
-                  once calculated, so Next/Finish reads as the thing to do
-                  now. Stays fully clickable either way (e.g. to
-                  recalculate on purpose without editing anything). */}
+              {/* Calculate button */}
               {isReadOnly ? (
                 <button
                   type="button"
                   disabled
                   title="Calculations are locked in Read-Only mode"
-                  className="flex justify-center items-center gap-2 px-5 py-2.5 sm:py-2 lg:py-2.5 hp:px-4 hp:py-2 md:px-6 rounded-lg hp:rounded-md font-medium text-sm bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed shadow-none"
+                  className="flex justify-center items-center gap-2 px-5 py-2.5 sm:py-2 lg:py-2.5 hp:px-4 hp:py-2 md:px-6 rounded font-medium text-sm bg-gray-100 text-gray-400 border border-gray-300 cursor-not-allowed"
                 >
                   <Lock className="w-4 lg:w-4.5 h-4 lg:h-4.5" />
                   <span className="hp:text-[11px] whitespace-nowrap">
@@ -1809,17 +1780,17 @@ export default function PoleFormView() {
                       : undefined
                   }
                   className={`inline-flex justify-center items-center gap-2 min-w-[160px] px-5 py-2.5 sm:py-2 lg:py-2.5 hp:px-4 hp:py-2 md:px-6
-                  rounded-lg hp:rounded-md font-medium text-sm transition-all duration-200 shadow-sm
+                  rounded font-medium text-sm transition-colors border
                   ${
                     isStraightStandard
-                      ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none"
+                      ? "bg-gray-100 text-gray-400 border-gray-300 cursor-not-allowed"
                       : isShowingCalcLoading
-                        ? "bg-gradient-to-r from-[#0d3b66] to-[#3399cc] text-white opacity-50 cursor-not-allowed"
+                        ? "bg-gray-800 text-white border-gray-800 opacity-50 cursor-not-allowed"
                         : calculation.isInputsChanged
-                          ? "bg-gradient-to-r from-[#0d3b66] to-[#3399cc] text-white ring-2 ring-sky-300 ring-offset-2 ring-offset-white shadow-md hover:brightness-110 active:scale-[0.98] cursor-pointer"
+                          ? "bg-gray-900 hover:bg-gray-800 text-white border-gray-900 cursor-pointer"
                           : calculation.isCalculated
-                            ? "bg-[#eef2f6] hover:bg-[#e2e8f0] text-[#0d3b66] ring-1 ring-inset ring-[#d0d7e2] hover:ring-[#b8c2d1] cursor-pointer"
-                            : "bg-gradient-to-r from-[#0d3b66] to-[#3399cc] text-white hover:brightness-110 cursor-pointer"
+                            ? "bg-white hover:bg-gray-100 text-gray-800 border-gray-300 cursor-pointer"
+                            : "bg-gray-900 hover:bg-gray-800 text-white border-gray-900 cursor-pointer"
                   }`}
                 >
                   {isShowingCalcLoading ? (
@@ -1841,7 +1812,7 @@ export default function PoleFormView() {
                 </button>
               )}
 
-              {/* Next/Finish button — strictly disabled when calculating or uncalculated */}
+              {/* Next/Finish button */}
               <button
                 type="button"
                 disabled={
@@ -1870,12 +1841,12 @@ export default function PoleFormView() {
                       : calculation.buttonLabel
                 }
                 className={`flex justify-center items-center gap-2 px-5 py-2.5 sm:py-2 lg:py-2.5 hp:px-3 hp:py-2 md:px-6
-                rounded-lg hp:rounded-md font-medium transition-all text-sm
+                rounded font-medium transition-colors text-sm border
                 ${
                   isShowingCalcLoading ||
                   (!calculation.isCalculated && !isReadOnly)
-                    ? "bg-gray-100 text-gray-400 ring-1 ring-inset ring-gray-200 cursor-not-allowed shadow-none opacity-60"
-                    : "bg-gradient-to-r from-[#0d3b66] to-[#3399cc] text-white hover:brightness-110 shadow-sm cursor-pointer"
+                    ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60"
+                    : "bg-gray-900 hover:bg-gray-800 text-white border-gray-900 cursor-pointer"
                 }`}
               >
                 <span className="hp:hidden">

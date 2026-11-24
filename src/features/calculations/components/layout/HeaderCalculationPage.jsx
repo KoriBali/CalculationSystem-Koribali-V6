@@ -720,19 +720,19 @@ export function HeaderCalculationPage() {
               ${isManyTabs ? "w-auto" : "min-w-0"}
               ${
                 isDisabled
-                  ? "bg-slate-50 text-slate-400 border-dashed border-slate-300 cursor-not-allowed"
+                  ? "bg-gray-50 text-gray-400 border-dashed border-gray-300 cursor-not-allowed"
                   : isActive
-                    ? "bg-[#0d3b66] text-white border-[#0d3b66] shadow-sm cursor-default"
-                    : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 hover:text-slate-900 cursor-pointer"
+                    ? "bg-gray-900 text-white border-gray-900 shadow-none cursor-default"
+                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100 hover:text-gray-900 cursor-pointer"
               }`}
           >
             <Icon
               className={`w-4 h-4 shrink-0 transition-colors duration-200 ${
                 isDisabled
-                  ? "text-slate-400"
+                  ? "text-gray-400"
                   : isActive
                     ? "text-white"
-                    : "text-slate-500"
+                    : "text-gray-600"
               }`}
             />
             <span className="whitespace-nowrap">{item.label}</span>
@@ -741,7 +741,7 @@ export function HeaderCalculationPage() {
           {index < currentNavItems.length - 1 && (
             <div className="flex items-center justify-center mx-2 shrink-0">
               <ChevronRight
-                className={`w-4 h-4 ${item.completed ? "text-[#0d3b66]" : "text-slate-300"}`}
+                className={`w-4 h-4 ${item.completed ? "text-gray-800" : "text-gray-300"}`}
               />
             </div>
           )}
@@ -837,9 +837,9 @@ export function HeaderCalculationPage() {
                 : "lg:[clip-path:inset(-12px_-12px_-12px_-12px)] opacity-100"
             }`}
           >
-            {/* ─── BLUE HEADER CARD ─────────────────────────────────────────────── */}
+            {/* ─── WIREFRAME HEADER CARD ─────────────────────────────────────────── */}
             <div
-              className="rounded-xl bg-gradient-to-r from-[#0d3b66] to-[#1a5a92] shadow-sm px-3 py-3 sm:px-4 sm:py-4 md:px-6 2xl:px-8 flex flex-col gap-3 sm:gap-4 sm:rounded-t-2xl sm:rounded-b-none"
+              className="rounded bg-white border border-gray-300 px-3 py-3 sm:px-4 sm:py-3 md:px-6 flex flex-col gap-3 sm:rounded-t sm:rounded-b-none"
             >
               {/* TOP ROW: Back / Mode Switch / Save */}
               <div className="flex items-center justify-between gap-2 sm:gap-3 w-full">
@@ -848,7 +848,7 @@ export function HeaderCalculationPage() {
                   <button
                     type="button"
                     onClick={handleBackClick}
-                    className="flex items-center justify-center gap-1.5 sm:gap-2 min-w-0 max-w-full text-white px-3 py-2 sm:px-4 rounded-lg hp:rounded-md text-xs sm:text-sm font-medium border border-white/20 hover:bg-white/10 active:bg-white/15 transition"
+                    className="flex items-center justify-center gap-1.5 sm:gap-2 min-w-0 max-w-full text-gray-700 bg-white px-3 py-1.5 sm:px-4 rounded text-xs sm:text-sm font-medium border border-gray-300 hover:bg-gray-100 transition cursor-pointer"
                   >
                     <ArrowLeft className="w-4 h-4 shrink-0" />
 
@@ -1048,7 +1048,7 @@ export function HeaderCalculationPage() {
                         onClick={handleToggleCollapsed}
                         title="Minimize header"
                         aria-label="Minimize header"
-                        className="hidden lg:flex items-center justify-center gap-2 px-3 py-2 shrink-0 whitespace-nowrap text-white/80 hover:text-white hover:bg-white/10 active:bg-white/15 rounded-lg text-sm font-medium transition"
+                        className="hidden lg:flex items-center justify-center gap-2 px-3 py-1.5 shrink-0 whitespace-nowrap text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded text-sm font-medium border border-gray-300 transition"
                       >
                         <PanelLeftClose className="w-4 h-4 shrink-0" />
                         <span>Minimize</span>
@@ -1058,8 +1058,7 @@ export function HeaderCalculationPage() {
                 </div>
               </div>
 
-              {/* MOBILE: PHASE STEPPER — same button/pill/checkmark treatment as
-            the desktop version above, scaled down for a compact touch bar. */}
+              {/* MOBILE: PHASE STEPPER */}
               {workflow.projectMode === "both" && (
                 <div className="flex sm:hidden w-full items-center justify-center px-4 pt-2">
                   {/* Phase 1 */}
@@ -1160,8 +1159,8 @@ export function HeaderCalculationPage() {
               )}
             </div>
 
-            {/* ─── STEP NAVIGATION — DESKTOP (separate section, no gap) ─────────── */}
-            <div className="hidden sm:block bg-white border border-slate-200 border-t-0 rounded-b-2xl sm:px-4 sm:py-2 md:px-6 2xl:px-8 shadow-sm">
+            {/* ─── STEP NAVIGATION — DESKTOP ─────────── */}
+            <div className="hidden sm:block bg-white border border-gray-300 border-t-0 rounded-b sm:px-4 sm:py-2 md:px-6">
                 <div className="relative flex items-center w-full overflow-hidden">
                   {/* SCROLL LEFT */}
                   <div

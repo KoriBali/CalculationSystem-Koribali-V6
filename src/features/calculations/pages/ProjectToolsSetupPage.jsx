@@ -16,62 +16,61 @@ import {
 import { projectTypeLabel } from "../constants/projectTypes";
 import { ConfirmResetAllModal } from "../components/modals/ConfirmResetAllModal";
 
-// Reusable section title with left accent bar
+// Reusable section title
 const SectionTitle = ({ children }) => (
-  <h3 className="text-[#0d3b66] mb-4 flex items-center gap-1 md:gap-2 text-xs md:text-sm font-medium">
-    <div className="w-1 h-4 md:h-5 bg-[#3399cc] rounded-full" />
+  <h3 className="text-gray-900 mb-2 flex items-center gap-2 text-xs md:text-sm font-semibold">
     {children}
   </h3>
 );
 
 // Reusable section card wrapper
 const SectionCard = ({ children }) => (
-  <div className="bg-white px-4 md:px-5 py-5 rounded-xl hp:rounded-lg border border-gray-200">
+  <div className="bg-white px-4 md:px-5 py-5 rounded border border-gray-300">
     {children}
   </div>
 );
 
-// CardOption matching the user's reference code
+// CardOption matching wireframe structure
 const CardOption = ({ label, desc, icon: Icon, current, value, onChange }) => {
   const isActive = current === value;
   return (
     <button
       type="button"
       onClick={() => onChange(value)}
-      className={`group w-full flex items-center justify-between px-3 xl:px-4 py-2.5 lg:py-3 relative overflow-hidden rounded-lg border transition-all duration-300 cursor-pointer active:scale-[0.98] ${isActive
-        ? "border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-50"
-        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"
-        }`}
+      className={`group w-full flex items-center justify-between px-3 xl:px-4 py-2.5 lg:py-3 relative rounded border transition-all duration-200 cursor-pointer ${
+        isActive
+          ? "border-2 border-gray-900 bg-gray-50"
+          : "border-gray-300 bg-white hover:border-gray-400 hover:bg-gray-50"
+      }`}
     >
       <div className="flex items-center gap-3">
         <div
-          className={`p-1.5 rounded-md ${isActive
-            ? "bg-blue-100 text-blue-600"
-            : "bg-slate-100 text-slate-500"
-            }`}
+          className={`p-1.5 rounded border ${
+            isActive
+              ? "bg-gray-200 border-gray-400 text-gray-900"
+              : "bg-gray-100 border-gray-200 text-gray-600"
+          }`}
         >
           <Icon size={16} />
         </div>
         <div className="flex flex-col items-start text-left">
           <p
-            className={`text-[12px] md:text-sm font-medium ${isActive ? "text-slate-900" : "text-slate-700"
-              }`}
+            className={`text-[12px] md:text-sm font-semibold ${
+              isActive ? "text-gray-900" : "text-gray-800"
+            }`}
           >
             {label}
           </p>
-          <p
-            className={`text-[12px] md:text-[13px] mt-0.5 ${isActive ? "text-slate-500" : "text-slate-500"
-              }`}
-          >
+          <p className="text-[12px] md:text-[13px] mt-0.5 text-gray-500">
             {desc}
           </p>
         </div>
       </div>
       <div className="shrink-0 ml-2 flex items-center">
         {isActive ? (
-          <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
+          <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-gray-900" />
         ) : (
-          <Circle className="w-4 h-4 md:w-5 md:h-5 text-slate-300 group-hover:text-slate-400" />
+          <Circle className="w-4 h-4 md:w-5 md:h-5 text-gray-400 group-hover:text-gray-600" />
         )}
       </div>
     </button>
@@ -276,40 +275,34 @@ export default function ProjectToolsSetupPage() {
         <title>Setup — {projectTitle} · Project Tools</title>
       </Helmet>
 
-      <div className="w-full max-w-[1440px] mx-auto pt-0 pb-24 sm:pb-8 px-2 space-y-6 md:space-y-8">
-        {/* ─── TOP BLUE BANNER (Clean single block without white tabs) ─── */}
-        <div className="rounded-xl sm:rounded-2xl bg-gradient-to-r from-[#0d3b66] to-[#1a5a92] shadow-sm px-3 py-3 sm:px-4 sm:py-4 md:px-6 2xl:px-8 flex items-center justify-between">
+      <div className="w-full max-w-[1440px] mx-auto pt-0 pb-24 sm:pb-8 px-2 space-y-6">
+        {/* ─── TOP WIREFRAME BAR ─── */}
+        <div className="rounded border border-gray-300 bg-white px-4 py-3 flex items-center justify-between">
           <button
             type="button"
             onClick={() => navigate("/project-tools")}
-            className="flex items-center justify-center gap-1.5 sm:gap-2 min-w-0 max-w-full text-white px-3 py-2 sm:px-4 rounded-lg hp:rounded-md text-xs sm:text-sm font-medium border border-white/20 hover:bg-white/10 active:bg-white/15 transition shadow-xs"
+            className="flex items-center justify-center gap-1.5 sm:gap-2 text-gray-700 px-3 py-1.5 rounded text-xs sm:text-sm font-medium border border-gray-300 hover:bg-gray-100 transition cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4 shrink-0" />
             <span className="truncate">Back to project type</span>
           </button>
 
-          <span className="text-xs sm:text-sm text-white/80 font-medium hidden sm:inline">
+          <span className="text-xs sm:text-sm text-gray-600 font-medium hidden sm:inline">
             {projectTitle}
           </span>
         </div>
 
         {/* ─── FORM CONTAINER ─── */}
-        <div className="bg-white rounded-2xl hp:rounded-xl border border-slate-200 shadow-[0_2px_10px_rgba(15,23,42,0.06)] overflow-hidden">
-          {/* Top accent strip */}
-          <div
-            aria-hidden="true"
-            className="h-1.5 bg-gradient-to-r from-[#0d3b66] to-[#3399cc]"
-          />
-
+        <div className="bg-white rounded border border-gray-300 overflow-hidden">
           <div className="p-4 md:p-6 space-y-4 md:space-y-6">
             {/* ── Project Setup Section ── */}
             <div>
               <SectionTitle>Project Setup</SectionTitle>
-              <p className="-mt-2 mb-4 text-[12px] md:text-[13px] text-slate-500">
+              <p className="mb-4 text-[12px] md:text-[13px] text-gray-500">
                 Choose the type of work to start for this {projectTitle.toLowerCase()}.
               </p>
               <SectionCard>
-                <p className="mb-3 md:mb-4 text-xs md:text-sm font-medium text-slate-700">
+                <p className="mb-3 md:mb-4 text-xs md:text-sm font-medium text-gray-700">
                   What would you like to do?
                 </p>
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -332,7 +325,7 @@ export default function ProjectToolsSetupPage() {
                 </div>
 
                 {/* Next-step hint */}
-                <p className="mt-3 md:mt-4 flex items-start gap-1.5 text-[12px] md:text-[13px] text-slate-500">
+                <p className="mt-3 md:mt-4 flex items-start gap-1.5 text-[12px] md:text-[13px] text-gray-500">
                   <Info className="w-4 h-4 mt-[2.5px]" />
                   <span>{nextHint}</span>
                 </p>
@@ -342,7 +335,7 @@ export default function ProjectToolsSetupPage() {
             {/* ── Design Type Section ── */}
             <div>
               <SectionTitle>Design Type</SectionTitle>
-              <p className="-mt-2 mb-4 text-[12px] md:text-[13px] text-slate-500">
+              <p className="mb-4 text-[12px] md:text-[13px] text-gray-500">
                 Choose whether to use standard predefined specifications or customize your own.
               </p>
               <SectionCard>
@@ -375,7 +368,7 @@ export default function ProjectToolsSetupPage() {
               <button
                 type="button"
                 onClick={() => setShowResetModal(true)}
-                className="flex items-center gap-2 px-5 py-2.5 md:px-6 rounded-lg hp:rounded-md bg-white text-red-500 font-medium text-xs md:text-sm hover:bg-red-50 hover:text-red-600 transition-colors border border-red-300 shadow-sm"
+                className="flex items-center gap-2 px-5 py-2.5 rounded bg-white text-gray-700 font-medium text-xs md:text-sm hover:bg-gray-100 transition-colors border border-gray-300 cursor-pointer"
               >
                 <RotateCcw className="w-4 h-4" />
                 <span>Reset</span>
@@ -384,7 +377,7 @@ export default function ProjectToolsSetupPage() {
               <button
                 type="button"
                 onClick={handleNext}
-                className="flex justify-center items-center gap-2 px-5 py-2.5 md:px-6 rounded-lg hp:rounded-md font-medium bg-gradient-to-r from-[#0d3b66] to-[#3399cc] text-white text-xs md:text-sm hover:brightness-110 shadow-sm transition-all"
+                className="flex justify-center items-center gap-2 px-5 py-2.5 rounded font-medium bg-gray-900 text-white text-xs md:text-sm hover:bg-gray-800 transition-colors border border-gray-900 cursor-pointer"
               >
                 {nextLabel}
                 <ChevronRight className="w-4 lg:w-4.5 h-4 lg:h-4.5" />

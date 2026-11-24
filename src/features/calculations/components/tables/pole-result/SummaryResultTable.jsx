@@ -62,14 +62,14 @@ function ConditionTable({ label, rows, calculationKey = 0 }) {
       {/* Condition divider */}
       <div className="flex items-center mt-6 mb-4">
         <div className="flex-1 h-px bg-gray-200" />
-        <h4 className="mx-4 px-3 py-1.5 text-xs font-semibold text-[#0d3b66] bg-[#0d3b66]/10 rounded-md whitespace-nowrap">
+        <h4 className="mx-4 px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded border border-gray-200 whitespace-nowrap">
           {label}
         </h4>
         <div className="flex-1 h-px bg-gray-200" />
       </div>
 
-      {/* Table container — solid white + shadow */}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+      {/* Table container */}
+      <div className="overflow-x-auto rounded border border-gray-300 bg-white">
         <table className="min-w-full table-fixed text-sm hp:text-[10px]">
           <colgroup>
             <col className="w-12" />
@@ -231,12 +231,11 @@ export function SummaryResultTable({ resultPole, display = null, isOldJil = null
         return (
           <div
             key={poleIndex}
-            className="bg-slate-50 rounded-2xl border border-gray-200 shadow-sm p-5 hp:p-4"
+            className="bg-white rounded border border-gray-300 p-5 hp:p-4"
           >
-            {/* Pole header — accent bar, same pattern as Opening/Baseplate Evaluation */}
+            {/* Pole header */}
             <div className="flex items-center gap-2">
-              <div className="w-1 h-4 hp:h-3.5 bg-[#3399cc] rounded-full" />
-              <h3 className="text-[#0d3b66] font-medium text-sm hp:text-xs leading-tight">
+              <h3 className="text-gray-900 font-semibold text-sm hp:text-xs leading-tight">
                 Pole {poleIndex + 1} Evaluation
               </h3>
             </div>

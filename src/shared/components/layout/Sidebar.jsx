@@ -73,7 +73,7 @@ function NavItem({ item, path, isActive, isCollapsed, layoutId }) {
             : "gap-3 px-3 mx-1 rounded-lg"
         }
 
-        ${isActive ? "text-white" : "text-white/65 hover:text-white"}
+        ${isActive ? "text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900"}
       `}
     >
       {/* Active background */}
@@ -82,7 +82,8 @@ function NavItem({ item, path, isActive, isCollapsed, layoutId }) {
           layoutId={layoutId}
           className="
             absolute inset-0
-            bg-white/15
+            bg-slate-100
+            border border-slate-300
             rounded-lg
             z-0
           "
@@ -97,7 +98,7 @@ function NavItem({ item, path, isActive, isCollapsed, layoutId }) {
             absolute inset-0
             rounded-lg
             bg-transparent
-            group-hover:bg-white/[0.07]
+            group-hover:bg-slate-50
             transition-colors duration-200
             z-0
           "
@@ -180,7 +181,7 @@ function SidebarLogo({ isCollapsed, onClose, onLogoClick }) {
           py-1.5
 
           transition-colors
-          hover:bg-white/[0.05]
+          hover:bg-slate-100
 
           ${isCollapsed ? "justify-center px-1" : "gap-3 px-1.5 pr-2"}
         `}
@@ -196,13 +197,12 @@ function SidebarLogo({ isCollapsed, onClose, onLogoClick }) {
             flex items-center
             justify-center
 
-            rounded-full
+            rounded-lg
 
-            bg-white/95
+            bg-white
             p-1
 
-            shadow-sm
-            ring-1 ring-white/20
+            border border-slate-200
           "
         >
           <img
@@ -244,7 +244,7 @@ function SidebarLogo({ isCollapsed, onClose, onLogoClick }) {
                 font-bold
                 tracking-[0.01em]
 
-                text-white
+                text-slate-900
                 whitespace-nowrap
               "
             >
@@ -262,7 +262,7 @@ function SidebarLogo({ isCollapsed, onClose, onLogoClick }) {
                 font-medium
                 tracking-[0.02em]
 
-                text-white/50
+                text-slate-500
                 whitespace-nowrap
               "
             >
@@ -288,9 +288,9 @@ function SidebarLogo({ isCollapsed, onClose, onLogoClick }) {
 
             rounded-lg
 
-            text-white/60
-            hover:text-white
-            hover:bg-white/[0.08]
+            text-slate-500
+            hover:text-slate-900
+            hover:bg-slate-100
 
             transition-colors
           "
@@ -349,18 +349,12 @@ export function MobileSidebar({
 
               w-[250px]
 
-              bg-gradient-to-b
-              from-[#0d3b66]
-              to-[#0a2c4c]
-
-              text-white
-
+              bg-white
+              text-slate-800
               z-[101]
-
               flex flex-col
-
-              shadow-2xl
-              border-r border-[#08223d]
+              shadow-lg
+              border-r border-slate-300
             "
           >
             <SidebarLogo
@@ -432,16 +426,9 @@ export function DesktopSidebar({
 
         flex flex-col
 
-        bg-gradient-to-b
-        from-[#0d3b66]
-        to-[#0a2c4c]
-
-        border-r border-[#08223d]
-
-        text-white
-
-        shadow-xl
-
+        bg-white
+        border-r border-slate-300
+        text-slate-800
         z-50
       "
     >
@@ -485,12 +472,12 @@ export function DesktopSidebar({
           h-12
           shrink-0
 
-          border-t border-white/10
+          border-t border-slate-200
 
-          text-white/45
+          text-slate-400
 
-          hover:text-white
-          hover:bg-white/[0.08]
+          hover:text-slate-700
+          hover:bg-slate-50
 
           transition-colors
 

@@ -46,14 +46,12 @@ export function Header({
               flex items-center justify-center
               w-9 h-9
               bg-slate-100
-              text-[#0d3b66]
+              text-slate-700
               hover:bg-slate-200
               active:bg-slate-300
-              rounded-lg
+              rounded
               transition-colors
               focus:outline-none
-              focus-visible:ring-2
-              focus-visible:ring-[#3399cc]/40
             "
           >
             <Menu size={19} />
@@ -108,11 +106,9 @@ export function Header({
                     font-medium
                     text-slate-500
                     rounded
-                    hover:text-[#0d3b66]
+                    hover:text-slate-900
                     transition-colors
                     focus:outline-none
-                    focus-visible:ring-2
-                    focus-visible:ring-[#3399cc]/40
                   "
                 >
                   {rootLabel}
@@ -156,11 +152,9 @@ export function Header({
                         font-medium
                         text-slate-500
                         rounded
-                        hover:text-[#0d3b66]
+                        hover:text-slate-900
                         transition-colors
                         focus:outline-none
-                        focus-visible:ring-2
-                        focus-visible:ring-[#3399cc]/40
                       "
                     >
                       {currentTitle.global}
@@ -186,12 +180,10 @@ export function Header({
                             font-medium
                             text-slate-500
                             rounded
-                            hover:text-[#0d3b66]
+                            hover:text-slate-900
                             transition-colors
                             whitespace-nowrap
                             focus:outline-none
-                            focus-visible:ring-2
-                            focus-visible:ring-[#3399cc]/40
                           "
                         >
                           {currentTitle.stage}

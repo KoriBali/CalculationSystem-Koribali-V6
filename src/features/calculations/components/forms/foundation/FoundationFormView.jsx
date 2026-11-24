@@ -174,17 +174,10 @@ export default function FoundationFormView() {
                 overflow-hidden
               "
             >
-              {/* Top accent strip */}
-              <div
-                aria-hidden="true"
-                className="h-1.5 bg-gradient-to-r from-[#0d3b66] to-[#3399cc]"
-              />
-
               <div className="p-4 md:p-6 space-y-4 md:space-y-6">
                 {/* ================= FOUNDATION TYPE SECTION ================= */}
                 <div>
-                  <h3 className="text-[#0d3b66] mb-4 flex items-center gap-1 md:gap-2 text-xs md:text-sm font-medium">
-                    <div className="w-1 h-4 md:h-5 bg-[#3399cc] rounded-full" />
+                  <h3 className="text-gray-900 mb-4 flex items-center gap-1 md:gap-2 text-xs md:text-sm font-semibold">
                     Foundation Type <span className="text-red-500 ml-1 font-semibold">*</span>
                   </h3>
                   <FoundationType
