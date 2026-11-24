@@ -497,92 +497,132 @@ export default function ProjectToolsPage() {
     navigate("/project-tools/structural");
   };
 
-  // ─── 8. JSX RENDER VIEW (STRICT MONOCHROME WIREFRAME) ───────────────────────
+  // ─── 8. JSX RENDER VIEW ─────────────────────────────────────────────────────
   return (
-    <div className="min-h-full flex flex-col bg-white">
+    <div className="w-full">
       <Helmet>
         <title>Pole Type Configuration · KORI BALI</title>
       </Helmet>
 
-      <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6">
-        {/* Page Header */}
-        <div className="mb-4">
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900 tracking-tight">
-            Pole type configuration
-          </h1>
-          <p className="text-gray-500 mt-1 text-xs md:text-sm">
-            Choose a road lighting pole standard to apply its predefined specifications.
-          </p>
-        </div>
+      {/* Page Header */}
+      <div className="mb-4">
+        <h1 className="text-xl md:text-2xl font-bold text-gray-900 tracking-tight">
+          Pole type configuration
+        </h1>
+        <p className="text-gray-500 mt-1 text-xs md:text-sm">
+          Choose a road lighting pole standard to apply its predefined specifications.
+        </p>
+      </div>
 
-        {/* Informational Wireframe Banner */}
-        <div className="mb-6 px-4 py-2.5 rounded border border-gray-300 bg-gray-50 text-gray-700 text-xs md:text-sm flex items-center justify-between">
-          <p>
-            If not using a Road Lighting Pole standard, click{" "}
-            <span className="font-bold text-gray-900">NEXT</span> to enter specifications manually.
-          </p>
-        </div>
+      {/* Informational Wireframe Banner */}
+      <div className="mb-6 px-4 py-2.5 rounded border border-gray-300 bg-gray-50 text-gray-700 text-xs md:text-sm flex items-center justify-between">
+        <p>
+          If not using a Road Lighting Pole standard, click{" "}
+          <span className="font-bold text-gray-900">NEXT</span> to enter specifications manually.
+        </p>
+      </div>
 
-        {/* 2-Column Grid Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-6">
-          {/* ── LEFT PANEL: Pole Standard Selection ── */}
-          <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col gap-5 bg-white">
-            {/* Section 1: Standard Type */}
-            <div>
-              <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
-                Select Pole Standard Type
-              </label>
-              <div className="flex flex-col gap-2">
-                {standardTypes.map((type) => {
-                  const isSelected = selectedStandard === type.id;
-                  return (
-                    <button
-                      key={type.id}
-                      type="button"
-                      onClick={() => handleSelectStandard(type.id)}
-                      className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
-                        isSelected
-                          ? "border-gray-900 bg-gray-100 text-gray-900 font-semibold shadow-sm"
-                          : "border-gray-300 hover:border-gray-400 text-gray-700 bg-white"
-                      }`}
-                    >
-                      <span>{type.label}</span>
-                      {isSelected ? (
-                        <CheckCircle2 className="w-4 h-4 text-gray-900 flex-shrink-0" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+      {/* 2-Column Grid Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-6">
+        {/* ── LEFT PANEL: Pole Standard Selection ── */}
+        <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col gap-5 bg-white">
+          {/* Section 1: Standard Type */}
+          <div>
+            <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
+              Select Pole Standard Type
+            </label>
+            <div className="flex flex-col gap-2">
+              {standardTypes.map((type) => {
+                const isSelected = selectedStandard === type.id;
+                return (
+                  <button
+                    key={type.id}
+                    type="button"
+                    onClick={() => handleSelectStandard(type.id)}
+                    className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
+                      isSelected
+                        ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
+                        : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
+                    }`}
+                  >
+                    <span>{type.label}</span>
+                    {isSelected ? (
+                      <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
+          </div>
 
-            {/* Section 2: Installation Type */}
+          {/* Section 2: Installation Type */}
+          <div className="pt-2 border-t border-gray-200">
+            <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
+              Select Installation Type
+            </label>
+            <div className="flex flex-col gap-2">
+              {[
+                { id: "baseplate", label: "Baseplate" },
+                { id: "embedment", label: "Embedment" },
+              ].map((item) => {
+                const isSelected = installationType === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => handleSelectInstallation(item.id)}
+                    className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
+                      isSelected
+                        ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
+                        : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
+                    }`}
+                  >
+                    <span>{item.label}</span>
+                    {isSelected ? (
+                      <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Validation Warning Hint */}
+            {installationError && (
+              <p className="text-xs text-red-600 font-medium mt-2">
+                {installationError}
+              </p>
+            )}
+          </div>
+
+          {/* Section 3: Baseplate -> Lowest Height Position */}
+          {installationType === "baseplate" && (
             <div className="pt-2 border-t border-gray-200">
               <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
-                Select Installation Type
+                Select Lowest Height Position
               </label>
               <div className="flex flex-col gap-2">
                 {[
-                  { id: "baseplate", label: "Baseplate" },
-                  { id: "embedment", label: "Embedment" },
-                ].map((item) => {
-                  const isSelected = installationType === item.id;
+                  { id: "onGL", label: "On GL" },
+                  { id: "underGL", label: "Under GL" },
+                ].map((pos) => {
+                  const isSelected = lowestHeightPosition === pos.id;
                   return (
                     <button
-                      key={item.id}
+                      key={pos.id}
                       type="button"
-                      onClick={() => handleSelectInstallation(item.id)}
+                      onClick={() => handleSelectPosition(pos.id)}
                       className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
                         isSelected
-                          ? "border-gray-900 bg-gray-100 text-gray-900 font-semibold shadow-sm"
-                          : "border-gray-300 hover:border-gray-400 text-gray-700 bg-white"
+                          ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
+                          : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
                       }`}
                     >
-                      <span>{item.label}</span>
+                      <span>{pos.label}</span>
                       {isSelected ? (
-                        <CheckCircle2 className="w-4 h-4 text-gray-900 flex-shrink-0" />
+                        <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
                       ) : (
                         <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
                       )}
@@ -590,208 +630,166 @@ export default function ProjectToolsPage() {
                   );
                 })}
               </div>
-              {/* Validation Warning Hint */}
-              {installationError && (
-                <p className="text-xs text-red-600 font-medium mt-2">
-                  {installationError}
-                </p>
-              )}
             </div>
+          )}
 
-            {/* Section 3: Baseplate -> Lowest Height Position */}
-            {installationType === "baseplate" && (
-              <div className="pt-2 border-t border-gray-200">
-                <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
-                  Select Lowest Height Position
-                </label>
-                <div className="flex flex-col gap-2">
-                  {[
-                    { id: "onGL", label: "On GL" },
-                    { id: "underGL", label: "Under GL" },
-                  ].map((pos) => {
-                    const isSelected = lowestHeightPosition === pos.id;
-                    return (
-                      <button
-                        key={pos.id}
-                        type="button"
-                        onClick={() => handleSelectPosition(pos.id)}
-                        className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
-                          isSelected
-                            ? "border-gray-900 bg-gray-100 text-gray-900 font-semibold shadow-sm"
-                            : "border-gray-300 hover:border-gray-400 text-gray-700 bg-white"
-                        }`}
-                      >
-                        <span>{pos.label}</span>
-                        {isSelected ? (
-                          <CheckCircle2 className="w-4 h-4 text-gray-900 flex-shrink-0" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Section 3: Embedment -> Embedment Length */}
-            {installationType === "embedment" && (
-              <div className="pt-2 border-t border-gray-200">
-                <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
-                  Embedment Length
-                </label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    value={embedmentLength}
-                    onChange={(e) => setEmbedmentLength(e.target.value)}
-                    placeholder="e.g. 1800"
-                    className="w-full pl-3 pr-12 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-900 bg-white text-gray-900"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs md:text-sm pointer-events-none">
-                    mm
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* ── RIGHT PANEL: Height Selector & Diagram Preview ── */}
-          <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col bg-white">
-            {/* Height selection row */}
-            <div className="mb-4">
-              <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2">
-                Select Pole Height
+          {/* Section 3: Embedment -> Embedment Length */}
+          {installationType === "embedment" && (
+            <div className="pt-2 border-t border-gray-200">
+              <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
+                Embedment Length
               </label>
-
-              {!selectedStandard ? (
-                <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
-                  Select a pole standard type first.
-                </div>
-              ) : !installationType ? (
-                <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
-                  Select an installation type first.
-                </div>
-              ) : installationType === "baseplate" && !lowestHeightPosition ? (
-                <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
-                  Select lowest height position first.
-                </div>
-              ) : availableHeights.length === 0 ? (
-                <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
-                  No height options available for this configuration.
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {availableHeights.map((h) => {
-                    const isSelected = selectedHeight === h.key;
-                    return (
-                      <button
-                        key={h.key}
-                        type="button"
-                        onClick={() => handleSelectHeight(h.key)}
-                        className={`px-4 py-2 rounded border text-xs md:text-sm font-medium transition-all cursor-pointer ${
-                          isSelected
-                            ? "border-gray-900 bg-gray-900 text-white shadow-sm"
-                            : "border-gray-300 text-gray-700 hover:border-gray-400 bg-white"
-                        }`}
-                      >
-                        {h.displayLabel}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  value={embedmentLength}
+                  onChange={(e) => setEmbedmentLength(e.target.value)}
+                  placeholder="e.g. 1800"
+                  className="w-full pl-3 pr-12 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-900 bg-white text-gray-900"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs md:text-sm pointer-events-none">
+                  mm
+                </span>
+              </div>
             </div>
+          )}
+        </div>
 
-            {/* Diagram Preview Area */}
-            <div className="border border-dashed border-gray-300 rounded p-4 flex-1 flex items-center justify-center min-h-[480px] lg:min-h-[580px] bg-white relative overflow-hidden">
-              {!selectedStandard || !installationType ? (
-                <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
-                  Select a standard to preview the pole.
-                </div>
-              ) : installationType === "baseplate" && !lowestHeightPosition ? (
-                <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
-                  Select lowest height position to preview the pole.
-                </div>
-              ) : !currentImage ? (
-                <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
-                  Select a standard to preview the pole.
-                </div>
-              ) : (
-                <div className="relative w-full h-full flex items-center justify-center">
-                  {/* Aspect-ratio pinned wrapper matching diagramLayout viewBox */}
-                  <div
-                    className="relative flex items-center justify-center max-w-full max-h-full"
-                    style={
-                      diagramLayout
-                        ? {
-                            width: `min(100%, calc(520px * ${diagramLayout.viewBox.width} / ${diagramLayout.viewBox.height}))`,
-                            aspectRatio: `${diagramLayout.viewBox.width} / ${diagramLayout.viewBox.height}`,
-                            height: "520px",
-                          }
-                        : { height: "520px" }
-                    }
-                  >
-                    {/* Background SVG diagram */}
-                    <img
-                      src={currentImage}
-                      alt={`${selectedStandard} diagram`}
-                      className="w-full h-full object-contain pointer-events-none select-none"
-                    />
+        {/* ── RIGHT PANEL: Height Selector & Diagram Preview ── */}
+        <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col bg-white">
+          {/* Height selection row */}
+          <div className="mb-4">
+            <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2">
+              Select Pole Height
+            </label>
 
-                    {/* Render Dimension Text Overlays (Monochrome text-gray-900) */}
-                    {diagramLabels?.map((label) => (
-                      <div
-                        key={`${label.key}:${label.lines.join("|")}`}
-                        style={label.style}
-                        className={`absolute pointer-events-none whitespace-nowrap text-[11px] md:text-xs leading-none text-gray-900 font-semibold ${
-                          label.isCentered ? "text-center" : ""
-                        }`}
-                      >
-                        {label.isLeader ? (
-                          <>
-                            <div>{label.lines[0]}</div>
-                            <div className="h-px bg-transparent my-0.5" />
-                            <div>{label.lines[1]}</div>
-                          </>
-                        ) : (
-                          label.lines.map((l) => <div key={l}>{l}</div>)
-                        )}
-                      </div>
-                    ))}
-                  </div>
+            {!selectedStandard ? (
+              <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
+                Select a pole standard type first.
+              </div>
+            ) : !installationType ? (
+              <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
+                Select an installation type first.
+              </div>
+            ) : installationType === "baseplate" && !lowestHeightPosition ? (
+              <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
+                Select lowest height position first.
+              </div>
+            ) : availableHeights.length === 0 ? (
+              <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
+                No height options available for this configuration.
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {availableHeights.map((h) => {
+                  const isSelected = selectedHeight === h.key;
+                  return (
+                    <button
+                      key={h.key}
+                      type="button"
+                      onClick={() => handleSelectHeight(h.key)}
+                      className={`px-4 py-2 rounded border text-xs md:text-sm font-medium transition-all cursor-pointer ${
+                        isSelected
+                          ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm font-semibold"
+                          : "border-gray-300 text-gray-700 hover:border-gray-400 bg-white"
+                      }`}
+                    >
+                      {h.displayLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Diagram Preview Area */}
+          <div className="border border-dashed border-gray-300 rounded p-4 flex-1 flex items-center justify-center min-h-[480px] lg:min-h-[580px] bg-white relative overflow-hidden">
+            {!selectedStandard || !installationType ? (
+              <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
+                Select a standard to preview the pole.
+              </div>
+            ) : installationType === "baseplate" && !lowestHeightPosition ? (
+              <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
+                Select lowest height position to preview the pole.
+              </div>
+            ) : !currentImage ? (
+              <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
+                Select a standard to preview the pole.
+              </div>
+            ) : (
+              <div className="relative w-full h-full flex items-center justify-center">
+                {/* Aspect-ratio pinned wrapper matching diagramLayout viewBox */}
+                <div
+                  className="relative flex items-center justify-center max-w-full max-h-full"
+                  style={
+                    diagramLayout
+                      ? {
+                          width: `min(100%, calc(520px * ${diagramLayout.viewBox.width} / ${diagramLayout.viewBox.height}))`,
+                          aspectRatio: `${diagramLayout.viewBox.width} / ${diagramLayout.viewBox.height}`,
+                          height: "520px",
+                        }
+                      : { height: "520px" }
+                  }
+                >
+                  {/* Background SVG diagram */}
+                  <img
+                    src={currentImage}
+                    alt={`${selectedStandard} diagram`}
+                    className="w-full h-full object-contain pointer-events-none select-none"
+                  />
+
+                  {/* Render Dimension Text Overlays */}
+                  {diagramLabels?.map((label) => (
+                    <div
+                      key={`${label.key}:${label.lines.join("|")}`}
+                      style={label.style}
+                      className={`absolute pointer-events-none whitespace-nowrap text-[11px] md:text-xs leading-none text-blue-700 font-medium ${
+                        label.isCentered ? "text-center" : ""
+                      }`}
+                    >
+                      {label.isLeader ? (
+                        <>
+                          <div>{label.lines[0]}</div>
+                          <div className="h-px bg-transparent my-0.5" />
+                          <div>{label.lines[1]}</div>
+                        </>
+                      ) : (
+                        label.lines.map((l) => <div key={l}>{l}</div>)
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* ── BOTTOM ACTIONS (WIREFRAME STYLING) ── */}
-        <div className="mt-6 flex items-center justify-between pt-4 border-t border-gray-200">
-          <button
-            type="button"
-            onClick={handleReset}
-            className="px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 rounded text-xs md:text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-gray-600" />
-            <span>Reset</span>
-          </button>
+      {/* ── BOTTOM ACTIONS ── */}
+      <div className="mt-6 flex items-center justify-between pt-4 border-t border-gray-200">
+        <button
+          type="button"
+          onClick={handleReset}
+          className="px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 rounded text-xs md:text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5"
+        >
+          <RotateCcw className="w-3.5 h-3.5 text-gray-600" />
+          <span>Reset</span>
+        </button>
 
-          <button
-            type="button"
-            onClick={handleNext}
-            disabled={!isFormComplete}
-            className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${
-              isFormComplete
-                ? "bg-gray-900 text-white hover:bg-gray-800 border border-gray-900 cursor-pointer shadow-sm"
-                : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
-            }`}
-          >
-            <span>Next</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleNext}
+          disabled={!isFormComplete}
+          className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${
+            isFormComplete
+              ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm"
+              : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+          }`}
+        >
+          <span>Next</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
