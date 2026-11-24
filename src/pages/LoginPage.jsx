@@ -10,7 +10,6 @@
 
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, AnimatePresence } from "framer-motion";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import {
@@ -198,32 +197,23 @@ export default function LoginPage() {
           <form onSubmit={formik.handleSubmit} className="space-y-5">
             
             {/* Alert Notifikasi Error Server */}
-            <AnimatePresence mode="wait">
-              {loginError && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="overflow-hidden mb-4"
-                >
-                  <div className="bg-red-50 border border-red-300 px-4 py-3 flex items-center justify-between text-red-700 text-xs font-medium rounded">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle size={15} />
-                      <span>{loginError}</span>
-                    </div>
+            {loginError && (
+              <div className="bg-red-50 border border-red-300 px-4 py-3 flex items-center justify-between text-red-700 text-xs font-medium rounded mb-4">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={15} />
+                  <span>{loginError}</span>
+                </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setLoginError("")}
-                      className="text-red-500 hover:text-red-700 cursor-pointer"
-                      title="Dismiss error"
-                    >
-                      <X size={15} />
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                <button
+                  type="button"
+                  onClick={() => setLoginError("")}
+                  className="text-red-500 hover:text-red-700 cursor-pointer"
+                  title="Dismiss error"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            )}
 
             {/* Input Field: Email / Username */}
             <div className="flex flex-col gap-1">
