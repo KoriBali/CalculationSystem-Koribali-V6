@@ -64,7 +64,7 @@ export default function OpeningFormView() {
       if (result === "OPEN_COVER") {
         navigate(
           isProjectTools
-            ? `/project-tools/${projectType}/report`
+            ? `/project-tools/report`
             : `/projects/${projectType}/${draftId}/report`
         );
       }
@@ -261,7 +261,7 @@ export default function OpeningFormView() {
                   notifyCalculationProgressChanged();
                   navigate(
                     isProjectTools
-                      ? `/project-tools/${projectType}/foundation`
+                      ? `/project-tools/foundation`
                       : `/projects/${projectType}/${draftId}/foundation`
                   );
                 }}

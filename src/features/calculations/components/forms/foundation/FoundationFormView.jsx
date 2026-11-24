@@ -74,7 +74,7 @@ export default function FoundationFormView() {
       if (result === "OPEN_COVER") {
         navigate(
           isProjectTools
-            ? `/project-tools/${projectType}/report`
+            ? `/project-tools/report`
             : `/projects/${projectType}/${draftId}/report`
         );
       }

@@ -1918,11 +1918,11 @@ export default function StructuralPage() {
 
       {/* Toast Modal for feedback/notifications */}
       <ToastModal
-        open={calculation.toast.show}
-        type={calculation.toast.type}
-        message={calculation.toast.message}
+        open={Boolean(calculation.toast)}
+        type={calculation.toast?.type || "info"}
+        message={calculation.toast?.message || ""}
         onClose={() =>
-          calculation.setToast((prev) => ({ ...prev, show: false }))
+          calculation.setToast(null)
         }
       />
     </div>

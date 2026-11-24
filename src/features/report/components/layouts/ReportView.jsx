@@ -838,7 +838,7 @@ export function ReportView() {
         cond = JSON.parse(sessionStorage.getItem(`${projectType}_condition`) || "{}");
       } catch {}
       const choice = sessionStorage.getItem(`${projectType}_foundation_step_choice`);
-      let targetStep = "pole";
+      let targetStep = "structural";
       if (cond?.foundationEnabled || choice === "foundation") {
         targetStep = "foundation";
       } else if (cond?.baseplateEnabled) {
@@ -846,7 +846,7 @@ export function ReportView() {
       } else if (cond?.openingEnabled) {
         targetStep = "opening";
       }
-      navigate(`/project-tools/${projectType}/${targetStep}`);
+      navigate(`/project-tools/${targetStep}`);
       return;
     }
     if (projectType && draftId) {
@@ -863,7 +863,7 @@ export function ReportView() {
 
   const onBackRequest = () => {
     if (location.pathname.startsWith("/project-tools")) {
-      navigate(`/project-tools/${projectType}/setup`);
+      navigate("/project-tools");
       return;
     }
     const backPath = activeDraftRequestPath(projectType);

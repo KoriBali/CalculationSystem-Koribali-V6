@@ -61,7 +61,7 @@ export default function ProjectToolsPage() {
   const navigate = useNavigate();
 
   // Pengambilan data master standar dari backend API (dengan fallback katalog otomatis)
-  const { poleStandardOptions } = usePoleStandardData();
+  const { poleStandardOptions, heightOptionsByStandard } = usePoleStandardData();
 
   // ─── 2. COMPONENT STATE (DEFAULT ALL UNSELECTED / EMPTY) ────────────────────
   const [selectedStandard, setSelectedStandard] = useState("");
@@ -105,6 +105,19 @@ export default function ProjectToolsPage() {
   const availableHeights = useMemo(() => {
     if (!selectedStandard || !effectiveGroundKey) return [];
 
+    // Prioritaskan daftar ketinggian dari BE jika tersedia
+    const beOptions =
+      heightOptionsByStandard?.[selectedStandard]?.[effectiveGroundKey];
+    if (beOptions && beOptions.length > 0) {
+      return beOptions.map((opt) => ({
+        key: opt.id,
+        heightId: opt.heightId,
+        numM: Number(opt.id),
+        displayLabel: opt.displayMeter || `${opt.id} m`,
+      }));
+    }
+
+    // Fallback katalog statis
     const taper = STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
     const group = taper[selectedStandard] || {};
     const entries = group[effectiveGroundKey] || {};
@@ -119,6 +132,7 @@ export default function ProjectToolsPage() {
       const displayLabel = isUnderGL ? `${numM} m` : `${Math.round(numM)} m`;
       return {
         key,
+        heightId: entries[key]?.standardId || null,
         numM,
         displayLabel,
       };
@@ -128,6 +142,7 @@ export default function ProjectToolsPage() {
     effectiveGroundKey,
     installationType,
     lowestHeightPosition,
+    heightOptionsByStandard,
   ]);
 
   // Menjaga agar selectedHeight hanya dibersihkan jika tidak lagi valid
@@ -321,48 +336,30 @@ export default function ProjectToolsPage() {
 
     if (isStandard) {
       // ── MODE STANDARD ──
+      // Ambil data spesifikasi murni dari katalog / BE tanpa hardcoded fallback
       const taper =
         STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
       const entry =
         taper[selectedStandard]?.[effectiveGroundKey]?.[selectedHeight] || {};
 
-      // Ekstraksi spesifikasi segmen tiang standar
-      const rawPoles = entry.poles || [];
-      const resolvedPoles = rawPoles.map((p, idx) => ({
-        name: p.name || `支柱−${idx + 1}`,
-        material: p.material || "STK400",
-        poleType: p.poleType || "Taper",
-        lowerDiameter: String(p.lowerDiameter || "165"),
-        upperDiameter: String(p.upperDiameter || "85"),
-        lowerThickness: String(p.lowerThickness || "4"),
-        upperThickness: String(p.upperThickness || "4"),
-        zHeight: String(p.zHeight || Number(selectedHeight) * 1000),
-        quantity: String(p.quantity || "1"),
-      }));
+      const matchedHeight = availableHeights.find(
+        (h) => h.key === selectedHeight,
+      );
+      const poleStandardHeightId =
+        matchedHeight?.heightId || entry.standardId || "";
 
-      // Ekstraksi spesifikasi beban aksesoris / lampu (direct objects)
-      const rawDirectObjects = entry.directObjects || [];
-      const resolvedDo = rawDirectObjects.map((d) => ({
-        name: d.name || "灯具",
-        type: d.type || "directional",
-        frontArea: String(d.frontArea ?? "0.1"),
-        sideArea: String(d.sideArea ?? "0.1"),
-        weight: String(d.weight ?? "14"),
-        zHeight: String(d.zHeight ?? Number(selectedHeight) * 1000),
-        nnC: String(d.nnC ?? "1"),
-        quantity: String(d.quantity ?? "1"),
-        fixAngle: String(d.fixAngle ?? "0"),
-      }));
-
-      const rawArms = entry.arms || [];
+      // Data murni dari BE / katalog: poles, directObjects, arms
+      const poles = entry.poles || [];
+      const directObjects = entry.directObjects || [];
+      const arms = entry.arms || [];
       const lowestHeightVal =
         installationType === "embedment"
-          ? String(embedmentLength || "1800")
+          ? String(embedmentLength || "")
           : lowestHeightPosition === "underGL"
             ? "300"
             : "0";
 
-      // Simpan konfigurasi lengkap standar ke sessionStorage untuk tahap kalkulasi struktural
+      // Simpan konfigurasi standar murni ke sessionStorage
       sessionStorage.setItem("projectType", "lighting-project");
       sessionStorage.setItem("projectMode", "calculation");
       sessionStorage.setItem(
@@ -380,6 +377,7 @@ export default function ProjectToolsPage() {
       sessionStorage.setItem(
         "lighting-project_taperPoleStandard",
         JSON.stringify({
+          poleStandardHeightId,
           poleType: selectedStandard,
           installationPole: installationType,
           groundPosition:
@@ -389,31 +387,12 @@ export default function ProjectToolsPage() {
             installationType === "embedment" ? embedmentLength : "",
         }),
       );
-      sessionStorage.setItem(
-        "lighting-project_poles",
-        JSON.stringify(resolvedPoles),
-      );
+      sessionStorage.setItem("lighting-project_poles", JSON.stringify(poles));
       sessionStorage.setItem(
         "lighting-project_directObjects",
-        JSON.stringify(
-          resolvedDo.length > 0
-            ? resolvedDo
-            : [
-                {
-                  name: "灯具",
-                  type: "directional",
-                  frontArea: "0.1",
-                  sideArea: "0.1",
-                  weight: "14",
-                  zHeight: String(Number(selectedHeight) * 1000 || "8000"),
-                  nnC: "1",
-                  quantity: "1",
-                  fixAngle: "0",
-                },
-              ],
-        ),
+        JSON.stringify(directObjects),
       );
-      sessionStorage.setItem("lighting-project_arms", JSON.stringify(rawArms));
+      sessionStorage.setItem("lighting-project_arms", JSON.stringify(arms));
       sessionStorage.setItem(
         "lighting-project_overheadWires",
         JSON.stringify([]),
@@ -431,7 +410,7 @@ export default function ProjectToolsPage() {
       );
     } else {
       // ── MODE CUSTOM ──
-      // Default parameter awal untuk spesifikasi custom manual
+      // Data custom murni kosong; user yang akan mengisinya sendiri dari form di structural
       sessionStorage.setItem("projectType", "lighting-project");
       sessionStorage.setItem("projectMode", "calculation");
       sessionStorage.setItem(
@@ -446,43 +425,16 @@ export default function ProjectToolsPage() {
           baseplateEnabled: installationType !== "embedment",
         }),
       );
-      sessionStorage.setItem(
-        "lighting-project_poles",
-        JSON.stringify([
-          {
-            name: "支柱",
-            material: "STK400",
-            poleType: "Taper",
-            lowerDiameter: "165",
-            upperDiameter: "85",
-            lowerThickness: "4",
-            upperThickness: "4",
-            zHeight: "8000",
-            quantity: "1",
-          },
-        ]),
-      );
+      sessionStorage.setItem("lighting-project_poles", JSON.stringify([]));
       sessionStorage.setItem(
         "lighting-project_directObjects",
-        JSON.stringify([
-          {
-            name: "灯具",
-            type: "omni",
-            frontArea: "0.1",
-            sideArea: "0.1",
-            weight: "14",
-            zHeight: "8000",
-            nnC: "1",
-            quantity: "1",
-            fixAngle: "0",
-          },
-        ]),
+        JSON.stringify([]),
       );
+      sessionStorage.setItem("lighting-project_arms", JSON.stringify([]));
       sessionStorage.setItem(
         "lighting-project_overheadWires",
         JSON.stringify([]),
       );
-      sessionStorage.setItem("lighting-project_arms", JSON.stringify([]));
       sessionStorage.setItem(
         "lighting-project_poleConfig",
         JSON.stringify({

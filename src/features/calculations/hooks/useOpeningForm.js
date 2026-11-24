@@ -23,10 +23,12 @@ const TYPE_LABEL_MAP = {
 // ─── HOOK ────────────────────────────────────────────────────────────────────
 
 export function useOpeningForm() {
-  const { type: projectType, draftId } = useParams();
+  const { type: paramType, draftId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const isProjectTools = location.pathname.startsWith("/project-tools");
+  const projectType =
+    paramType || sessionStorage.getItem("projectType") || "lighting-project";
 
   // Read condition from sessionStorage — projectType must be available first
   const condition = (() => {
@@ -270,18 +272,20 @@ export function useOpeningForm() {
   const finish = (force = false) => {
     if (!isCalculated && !force) return;
     if (isLast) return "OPEN_COVER";
+    const mappedNext = nextStep === "pole" ? "structural" : nextStep;
     navigate(
       isProjectTools
-        ? `/project-tools/${projectType}/${nextStep}`
+        ? `/project-tools/${mappedNext}`
         : `/projects/${projectType}/${draftId}/${nextStep}`
     );
   };
 
   // Navigates back to the previous step (always "pole" for opening)
   const goBack = () => {
+    const mappedPrev = prevStep === "pole" ? "structural" : prevStep;
     navigate(
       isProjectTools
-        ? `/project-tools/${projectType}/${prevStep}`
+        ? `/project-tools/${mappedPrev}`
         : `/projects/${projectType}/${draftId}/${prevStep}`
     );
   };

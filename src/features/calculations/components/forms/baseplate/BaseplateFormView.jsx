@@ -92,7 +92,7 @@ export default function BaseplateFormView() {
       if (result === "OPEN_COVER") {
         navigate(
           isProjectTools
-            ? `/project-tools/${projectType}/report`
+            ? `/project-tools/report`
             : `/projects/${projectType}/${draftId}/report`
         );
       }
@@ -289,7 +289,7 @@ export default function BaseplateFormView() {
                   notifyCalculationProgressChanged();
                   navigate(
                     isProjectTools
-                      ? `/project-tools/${projectType}/foundation`
+                      ? `/project-tools/foundation`
                       : `/projects/${projectType}/${draftId}/foundation`
                   );
                 }}

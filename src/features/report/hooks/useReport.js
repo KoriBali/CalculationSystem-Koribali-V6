@@ -656,7 +656,7 @@ export function useReport(projectType) {
     }
 
     if (isProjectTools) {
-      navigate(`/project-tools/${projectType}/report`, { state: finalReportPayload });
+      navigate(`/project-tools/report`, { state: finalReportPayload });
     } else if (activeDraftId) {
       saveWorkingSessionToDraft(projectType, activeDraftId);
       navigate(`/projects/${projectType}/${activeDraftId}/report`, { state: finalReportPayload });

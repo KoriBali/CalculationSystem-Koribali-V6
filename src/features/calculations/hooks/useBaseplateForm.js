@@ -15,10 +15,12 @@ import * as Utils from "../utils";
 
 // Main custom hook to manage baseplate form state and workflow
 export function useBaseplateForm() {
-  const { type: projectType, draftId } = useParams();
+  const { type: paramType, draftId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const isProjectTools = location.pathname.startsWith("/project-tools");
+  const projectType =
+    paramType || sessionStorage.getItem("projectType") || "lighting-project";
 
   // Safely retrieve condition data from session storage
   const getCondition = () => {
@@ -299,18 +301,20 @@ export function useBaseplateForm() {
       return "OPEN_COVER";
     }
 
+    const mappedNext = nextStep === "pole" ? "structural" : nextStep;
     navigate(
       isProjectTools
-        ? `/project-tools/${projectType}/${nextStep}`
+        ? `/project-tools/${mappedNext}`
         : `/projects/${projectType}/${draftId}/${nextStep}`
     );
   };
 
   // Navigates back to the previous step (pole, or opening if enabled)
   const handleBack = () => {
+    const mappedPrev = prevStep === "pole" ? "structural" : prevStep;
     navigate(
       isProjectTools
-        ? `/project-tools/${projectType}/${prevStep}`
+        ? `/project-tools/${mappedPrev}`
         : `/projects/${projectType}/${draftId}/${prevStep}`
     );
   };

@@ -25,10 +25,12 @@ export function usePoleCalculation({
   expandOhw,
   expandArm,
 }) {
-  const { type: projectType, draftId } = useParams();
+  const { type: paramType, draftId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const isProjectTools = location.pathname.startsWith("/project-tools");
+  const projectType =
+    paramType || sessionStorage.getItem("projectType") || "lighting-project";
 
   // Read condition from sessionStorage
   const condition = (() => {
@@ -489,7 +491,7 @@ export function usePoleCalculation({
 
     const activeDraft = draftId || sessionStorage.getItem(`${projectType}_active_draft_id`);
     if (isProjectTools) {
-      navigate(`/project-tools/${projectType}/report`, { state: reportPayload });
+      navigate(`/project-tools/report`, { state: reportPayload });
     } else if (activeDraft) {
       saveWorkingSessionToDraft(projectType, activeDraft);
       navigate(`/projects/${projectType}/${activeDraft}/report`, { state: reportPayload });
@@ -503,9 +505,10 @@ export function usePoleCalculation({
   const finish = () => {
     if (!isCalculated) return;
     if (isLast) return "OPEN_COVER";
+    const mappedNext = nextStep === "pole" ? "structural" : nextStep;
     navigate(
       isProjectTools
-        ? `/project-tools/${projectType}/${nextStep}`
+        ? `/project-tools/${mappedNext}`
         : `/projects/${projectType}/${draftId}/${nextStep}`
     );
   };
