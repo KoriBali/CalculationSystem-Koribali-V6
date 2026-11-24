@@ -9,9 +9,7 @@ import ScrollToTop from "../shared/components/ScroolTop";
 // Flow Pages
 import LoginPage from "../pages/LoginPage";
 import ProjectToolsPage from "../features/calculations/pages/ProjectToolsPage";
-import ProjectToolsSetupPage from "../features/calculations/pages/ProjectToolsSetupPage";
-import InitialInputPage from "../features/calculations/pages/InitialInputPage";
-import PoleFormPage from "../features/calculations/pages/steps/PoleStep";
+import StructuralPage from "../features/calculations/pages/StructuralPage";
 import OpeningFormPage from "../features/calculations/pages/steps/OpeningStep";
 import BaseplateFormPage from "../features/calculations/pages/steps/BaseplateStep";
 import FoundationFormPage from "../features/calculations/pages/steps/FoundationStep";
@@ -35,12 +33,19 @@ export default function AppRoutes() {
             {/* Core Project Tools Flow */}
             <Route path="project-tools">
               <Route index element={<ProjectToolsPage />} />
+              <Route path="structural" element={<StructuralPage />} />
+              <Route path="opening" element={<OpeningFormPage />} />
+              <Route path="baseplate" element={<BaseplateFormPage />} />
+              <Route path="foundation" element={<FoundationFormPage />} />
+              <Route path="report" element={<ReportPage />} />
+
               <Route path=":type" element={<TypeGuard />}>
-                <Route index element={<Navigate to="setup" replace />} />
-                <Route path="setup" element={<ProjectToolsSetupPage />} />
+                <Route index element={<Navigate to="structural" replace />} />
+                <Route path="setup" element={<Navigate to="/project-tools" replace />} />
+                <Route path="structural" element={<StructuralPage />} />
                 <Route element={<SessionGuard />}>
-                  <Route path="initial" element={<InitialInputPage />} />
-                  <Route path="pole" element={<PoleFormPage />} />
+                  <Route path="initial" element={<Navigate to="/project-tools/structural" replace />} />
+                  <Route path="pole" element={<StructuralPage />} />
                   <Route path="opening" element={<OpeningFormPage />} />
                   <Route path="baseplate" element={<BaseplateFormPage />} />
                   <Route path="foundation" element={<FoundationFormPage />} />

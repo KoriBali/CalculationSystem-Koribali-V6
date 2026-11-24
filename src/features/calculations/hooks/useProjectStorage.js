@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 export function useProjectStorage(projectType, key, defaultValue) {
-  const storageKey = `${projectType}_${key}`;
+  const effectiveProjectType =
+    projectType ||
+    (typeof window !== "undefined"
+      ? sessionStorage.getItem("projectType")
+      : null) ||
+    "lighting-project";
+  const storageKey = `${effectiveProjectType}_${key}`;
 
   const [state, setState] = useState(() => {
     const saved = sessionStorage.getItem(storageKey);

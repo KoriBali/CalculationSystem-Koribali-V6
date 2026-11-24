@@ -1,190 +1,600 @@
-import { useState } from "react";
+// src/features/calculations/pages/ProjectToolsPage.jsx
+import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet";
+import { CheckCircle2, Circle, RotateCcw, ArrowRight } from "lucide-react";
+import STANDARD_POLE_DATA from "../data/specStandardPole.json";
 import {
-  Lightbulb,
-  Shield,
-  Monitor,
-  Layers,
-  ChevronRight,
-  AlertCircle,
-  X,
-} from "lucide-react";
+  DIAGRAM_IMAGE_MAP,
+  EMBED_IMAGE_MAP,
+  DIAGRAM_LABEL_LAYOUT,
+  getDiagramLabels,
+  DEFAULT_HEIGHT_GAP_PX,
+} from "../components/forms/pole/standard/taperDiagramConstants";
 
-const PROJECT_TOOLS_TYPES = [
-  {
-    id: "lighting-project",
-    title: "Lighting Project",
-    icon: Lightbulb,
-    description:
-      "Calculate structural integrity and wind load for street and area lighting pole installations.",
-    isInDevelopment: false,
-    hidden: false,
-  },
-  {
-    id: "signboard-project",
-    title: "Signboard Project",
-    icon: Monitor,
-    description:
-      "Analyze structural requirements for standalone and wall-mounted advertisement signboards.",
-    isInDevelopment: true,
-    hidden: true,
-  },
-  {
-    id: "disaster-prevention-project",
-    title: "Disaster Prevention Project",
-    icon: Shield,
-    description:
-      "Evaluate safety factors and load capacities for emergency alert and disaster warning systems.",
-    isInDevelopment: true,
-    hidden: true,
-  },
-  {
-    id: "multi-purpose-project",
-    title: "Multi-purpose Project",
-    icon: Layers,
-    description:
-      "Comprehensive analysis for structures supporting various multi-purpose load attachments.",
-    isInDevelopment: true,
-    hidden: true,
-  },
+// Available Road Lighting Pole standard types
+const STANDARD_POLE_TYPES = [
+  { id: "IS", label: "Type-I (IS)" },
+  { id: "IA", label: "Type-I (IA)" },
+  { id: "LS", label: "Type-L (LS)" },
+  { id: "LA", label: "Type-L (LA)" },
+  { id: "TS", label: "Type-T (TS)" },
+  { id: "TA", label: "Type-T (TA)" },
 ];
 
 export default function ProjectToolsPage() {
   const navigate = useNavigate();
-  const [inDevModal, setInDevModal] = useState(null);
 
-  const visibleProjects = PROJECT_TOOLS_TYPES.filter(
-    (project) => !project.hidden
-  );
+  // Selection states (empty by default for Custom mode)
+  const [selectedStandard, setSelectedStandard] = useState("");
+  const [installationType, setInstallationType] = useState("baseplate"); // 'baseplate' | 'embedment'
+  const [lowestHeightPosition, setLowestHeightPosition] = useState("onGL"); // 'onGL' | 'underGL'
+  const [embedmentLength, setEmbedmentLength] = useState("1800");
+  const [selectedHeight, setSelectedHeight] = useState("");
 
-  const handleSelectProject = (project) => {
-    if (project.isInDevelopment) {
-      setInDevModal(project);
-      return;
+  // Ensure default backend project parameters on mount
+  useEffect(() => {
+    sessionStorage.setItem("projectType", "lighting-project");
+    sessionStorage.setItem("projectMode", "calculation");
+    sessionStorage.setItem(
+      "lighting-project_workflow",
+      JSON.stringify({
+        projectType: "lighting-project",
+        projectMode: "calculation",
+      }),
+    );
+  }, []);
+
+  // Compute available heights based on selected standard and ground position
+  const availableHeights = useMemo(() => {
+    if (!selectedStandard) return [];
+    const taper = STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
+    const group = taper[selectedStandard] || {};
+    const groundKey =
+      installationType === "embedment" ? "onGL" : lowestHeightPosition;
+    const entries = group[groundKey] || {};
+
+    const rawKeys = Object.keys(entries);
+    // Sort heights numerically
+    const sorted = [...rawKeys].sort((a, b) => Number(a) - Number(b));
+
+    // Prefer clean heights
+    return sorted.map((key) => {
+      const numM = Number(key);
+      const isUnderGL =
+        installationType === "baseplate" && lowestHeightPosition === "underGL";
+      const displayLabel = isUnderGL
+        ? `${numM} m`
+        : `${Math.round(numM)} m`;
+      return {
+        key,
+        numM,
+        displayLabel,
+      };
+    });
+  }, [selectedStandard, installationType, lowestHeightPosition]);
+
+  // If selected height is not in available heights when standard changes, auto-select first or clear
+  useEffect(() => {
+    if (availableHeights.length > 0) {
+      const match = availableHeights.find((h) => h.key === selectedHeight);
+      if (!match) {
+        setSelectedHeight(availableHeights[0].key);
+      }
+    } else {
+      setSelectedHeight("");
     }
-    navigate(`/project-tools/${project.id}/setup`);
+  }, [availableHeights, selectedHeight]);
+
+  // Diagram image resolution
+  const currentImage = useMemo(() => {
+    if (!selectedStandard) return null;
+    if (installationType === "embedment") {
+      return EMBED_IMAGE_MAP[selectedStandard] || null;
+    }
+    const groundKey =
+      lowestHeightPosition === "underGL" ? "underGL" : "onGL";
+    return DIAGRAM_IMAGE_MAP[selectedStandard]?.[groundKey] || null;
+  }, [selectedStandard, installationType, lowestHeightPosition]);
+
+  const effectiveGroundPosition =
+    installationType === "embedment" ? "embedment" : lowestHeightPosition;
+
+  // Diagram labels with dimensions
+  const diagramLabels = useMemo(() => {
+    if (!selectedStandard || !selectedHeight) return null;
+    return getDiagramLabels(
+      selectedStandard,
+      effectiveGroundPosition,
+      selectedHeight,
+      null,
+    );
+  }, [selectedStandard, effectiveGroundPosition, selectedHeight]);
+
+  const diagramLayout = useMemo(() => {
+    if (!selectedStandard) return null;
+    return (
+      DIAGRAM_LABEL_LAYOUT[
+        `${selectedStandard}.${effectiveGroundPosition}`
+      ] || null
+    );
+  }, [selectedStandard, effectiveGroundPosition]);
+
+  // Reset all selections back to empty
+  const handleReset = () => {
+    setSelectedStandard("");
+    setInstallationType("baseplate");
+    setLowestHeightPosition("onGL");
+    setEmbedmentLength("1800");
+    setSelectedHeight("");
+  };
+
+  // Next Button state logic:
+  // - If standard is empty -> Next is ENABLED (Custom mode)
+  // - If standard is selected -> Next is DISABLED until all required fields are filled
+  const isFormComplete = useMemo(() => {
+    if (!selectedStandard) {
+      // Empty standard = Custom mode is permitted immediately
+      return true;
+    }
+    // Standard mode requires installation, height, and embedment if applicable
+    if (!selectedHeight) return false;
+    if (installationType === "embedment" && (!embedmentLength || Number(embedmentLength) <= 0)) {
+      return false;
+    }
+    return true;
+  }, [selectedStandard, selectedHeight, installationType, embedmentLength]);
+
+  // Handle Proceed to Structural step
+  const handleNext = () => {
+    const isStandard = Boolean(selectedStandard);
+
+    if (isStandard) {
+      // STANDARD MODE
+      const taper = STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
+      const groundKey =
+        installationType === "embedment" ? "onGL" : lowestHeightPosition;
+      const entry = taper[selectedStandard]?.[groundKey]?.[selectedHeight] || {};
+
+      const rawPoles = entry.poles || [];
+      const resolvedPoles = rawPoles.map((p, idx) => ({
+        name: p.name || `支柱−${idx + 1}`,
+        material: p.material || "STK400",
+        poleType: p.poleType || "Taper",
+        lowerDiameter: String(p.lowerDiameter || "165"),
+        upperDiameter: String(p.upperDiameter || "85"),
+        lowerThickness: String(p.lowerThickness || "4"),
+        upperThickness: String(p.upperThickness || "4"),
+        zHeight: String(p.zHeight || (Number(selectedHeight) * 1000)),
+        quantity: String(p.quantity || "1"),
+      }));
+
+      const rawDirectObjects = entry.directObjects || [];
+      const resolvedDo = rawDirectObjects.map((d) => ({
+        name: d.name || "灯具",
+        type: d.type || "directional",
+        frontArea: String(d.frontArea ?? "0.1"),
+        sideArea: String(d.sideArea ?? "0.1"),
+        weight: String(d.weight ?? "14"),
+        zHeight: String(d.zHeight ?? (Number(selectedHeight) * 1000)),
+        nnC: String(d.nnC ?? "1"),
+        quantity: String(d.quantity ?? "1"),
+        fixAngle: String(d.fixAngle ?? "0"),
+      }));
+
+      const rawArms = entry.arms || [];
+      const lowestHeightVal =
+        installationType === "embedment"
+          ? String(embedmentLength || "1800")
+          : lowestHeightPosition === "underGL"
+            ? "300"
+            : "0";
+
+      // Persist Standard session state
+      sessionStorage.setItem("projectType", "lighting-project");
+      sessionStorage.setItem("projectMode", "calculation");
+      sessionStorage.setItem(
+        "lighting-project_condition",
+        JSON.stringify({
+          designStandard: "old_lighting_pole",
+          designWindSpeed: "60",
+          designAirDensity: "1.23",
+          poleType: "standard",
+          installationPole: installationType,
+          openingEnabled: true,
+          baseplateEnabled: installationType === "baseplate",
+        }),
+      );
+      sessionStorage.setItem(
+        "lighting-project_taperPoleStandard",
+        JSON.stringify({
+          poleType: selectedStandard,
+          installationPole: installationType,
+          groundPosition:
+            installationType === "embedment" ? "underGL" : lowestHeightPosition,
+          height: selectedHeight,
+          embedmentLength:
+            installationType === "embedment" ? embedmentLength : "",
+        }),
+      );
+      sessionStorage.setItem(
+        "lighting-project_poles",
+        JSON.stringify(resolvedPoles),
+      );
+      sessionStorage.setItem(
+        "lighting-project_directObjects",
+        JSON.stringify(
+          resolvedDo.length > 0
+            ? resolvedDo
+            : [
+                {
+                  name: "灯具",
+                  type: "directional",
+                  frontArea: "0.1",
+                  sideArea: "0.1",
+                  weight: "14",
+                  zHeight: String(Number(selectedHeight) * 1000 || "8000"),
+                  nnC: "1",
+                  quantity: "1",
+                  fixAngle: "0",
+                },
+              ],
+        ),
+      );
+      sessionStorage.setItem(
+        "lighting-project_arms",
+        JSON.stringify(rawArms),
+      );
+      sessionStorage.setItem(
+        "lighting-project_overheadWires",
+        JSON.stringify([]),
+      );
+      sessionStorage.setItem(
+        "lighting-project_poleConfig",
+        JSON.stringify({
+          lowestHeight: lowestHeightVal,
+          overDesign: "1",
+        }),
+      );
+      sessionStorage.setItem(
+        "lighting-project_poleTypeStandard",
+        JSON.stringify({ type: "taper" }),
+      );
+    } else {
+      // CUSTOM MODE
+      sessionStorage.setItem("projectType", "lighting-project");
+      sessionStorage.setItem("projectMode", "calculation");
+      sessionStorage.setItem(
+        "lighting-project_condition",
+        JSON.stringify({
+          designStandard: "old_lighting_pole",
+          designWindSpeed: "60",
+          designAirDensity: "1.23",
+          poleType: "custom",
+          installationPole: installationType,
+          openingEnabled: true,
+          baseplateEnabled: installationType === "baseplate",
+        }),
+      );
+      sessionStorage.setItem(
+        "lighting-project_poles",
+        JSON.stringify([
+          {
+            name: "支柱",
+            material: "STK400",
+            poleType: "Taper",
+            lowerDiameter: "165",
+            upperDiameter: "85",
+            lowerThickness: "4",
+            upperThickness: "4",
+            zHeight: "8000",
+            quantity: "1",
+          },
+        ]),
+      );
+      sessionStorage.setItem(
+        "lighting-project_directObjects",
+        JSON.stringify([
+          {
+            name: "灯具",
+            type: "omni",
+            frontArea: "0.1",
+            sideArea: "0.1",
+            weight: "14",
+            zHeight: "8000",
+            nnC: "1",
+            quantity: "1",
+            fixAngle: "0",
+          },
+        ]),
+      );
+      sessionStorage.setItem(
+        "lighting-project_overheadWires",
+        JSON.stringify([]),
+      );
+      sessionStorage.setItem("lighting-project_arms", JSON.stringify([]));
+      sessionStorage.setItem(
+        "lighting-project_poleConfig",
+        JSON.stringify({
+          lowestHeight: installationType === "embedment" ? embedmentLength : "0",
+          overDesign: "1",
+        }),
+      );
+    }
+
+    navigate("/project-tools/structural");
   };
 
   return (
-    <div className="min-h-full flex flex-col">
+    <div className="min-h-full flex flex-col bg-white">
       <Helmet>
-        <title>Project Tools · KORI BALI</title>
+        <title>Pole Type Configuration · KORI BALI</title>
       </Helmet>
 
-      <div className="mx-auto w-full max-w-[1600px] px-6 hp:px-3 lg:px-4 2xl:px-8 pt-0 pb-8">
-        {/* Page header */}
-        <div className="w-full max-w-[1400px] mx-auto text-left mb-6">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">
-            Project Tools
+      <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6">
+        {/* Page Header */}
+        <div className="mb-4">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900 tracking-tight">
+            Pole type configuration
           </h1>
-          <p className="text-gray-500 mt-1.5 text-sm">
-            Choose the specific project module to begin structural calculation and technical drawing configuration.
+          <p className="text-gray-500 mt-1 text-xs md:text-sm">
+            Choose a road lighting pole standard to apply its predefined specifications.
           </p>
         </div>
 
-        {/* Project type cards */}
-        <div
-          className={`grid gap-4 sm:gap-6 w-full max-w-[1400px] mx-auto ${
-            visibleProjects.length > 1
-              ? "grid-cols-1 xl:grid-cols-2"
-              : "grid-cols-1"
-          }`}
-        >
-          {visibleProjects.map((project) => {
-            const Icon = project.icon;
-
-            return (
-              <div key={project.id} className="h-full">
-                <button
-                  type="button"
-                  onClick={() => handleSelectProject(project)}
-                  className="h-full group relative w-full text-left bg-white border border-gray-300 p-5 md:p-6 rounded hover:border-gray-500 transition-colors flex flex-col sm:flex-row items-start sm:items-center gap-4 md:gap-5 cursor-pointer"
-                >
-                  {/* Icon Container */}
-                  <div className="flex-shrink-0 p-3.5 bg-gray-100 text-gray-700 rounded border border-gray-200">
-                    <Icon className="w-6 h-6 stroke-[1.5]" />
-                  </div>
-
-                  {/* Text Content */}
-                  <div className="flex-grow">
-                    <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-                      <h3 className="text-base font-semibold text-gray-900">
-                        {project.title}
-                      </h3>
-                      {project.isInDevelopment && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-gray-100 text-gray-600 border border-gray-300">
-                          In Development
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-gray-600 leading-relaxed pr-4">
-                      {project.description}
-                    </p>
-                  </div>
-
-                  {/* Arrow Indicator */}
-                  <div className="flex-shrink-0 self-center hidden sm:flex items-center justify-center w-8 h-8 rounded border border-gray-200 text-gray-400 group-hover:text-gray-700 group-hover:border-gray-400">
-                    <ChevronRight className="w-5 h-5" />
-                  </div>
-                </button>
-              </div>
-            );
-          })}
+        {/* Informational Banner */}
+        <div className="mb-6 px-4 py-2.5 rounded border border-amber-300 bg-amber-50/70 text-amber-900 text-xs md:text-sm flex items-center justify-between">
+          <p>
+            If not using a Road Lighting Pole standard, click{" "}
+            <span className="font-bold text-amber-950">NEXT</span> to enter specifications manually.
+          </p>
         </div>
-      </div>
 
-      {/* Notice modal for in-development project modules */}
-      {inDevModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-white rounded max-w-md w-full p-6 border border-gray-300">
-            <div className="flex items-start justify-between">
-              <div className="w-10 h-10 rounded bg-gray-100 text-gray-700 flex items-center justify-center border border-gray-200">
-                <AlertCircle className="w-5 h-5" />
+        {/* 2-Column Grid Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-6">
+          {/* ── LEFT PANEL: Pole Standard Selection ── */}
+          <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col gap-5 bg-white">
+            {/* Section 1: Standard Type */}
+            <div>
+              <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
+                Select Pole Standard Type
+              </label>
+              <div className="flex flex-col gap-2">
+                {STANDARD_POLE_TYPES.map((type) => {
+                  const isSelected = selectedStandard === type.id;
+                  return (
+                    <button
+                      key={type.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedStandard(isSelected ? "" : type.id)
+                      }
+                      className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
+                          : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
+                      }`}
+                    >
+                      <span>{type.label}</span>
+                      {isSelected ? (
+                        <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      ) : (
+                        <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-              <button
-                type="button"
-                onClick={() => setInDevModal(null)}
-                className="text-gray-400 hover:text-gray-600 p-1 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
             </div>
 
-            <div className="mt-4">
-              <h3 className="text-base font-bold text-gray-900">
-                {inDevModal.title}
-              </h3>
-              <p className="text-sm text-gray-600 mt-2 leading-relaxed">
-                The <strong>{inDevModal.title}</strong> module is currently in development.
-              </p>
-              <div className="mt-3.5 p-3.5 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700 leading-relaxed">
-                💡 For the current prototype, please proceed with <strong>Lighting Project</strong> which has full calculation and drawing capabilities ready.
+            {/* Section 2: Installation Type */}
+            <div className="pt-2 border-t border-gray-200">
+              <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
+                Select Installation Type
+              </label>
+              <div className="flex flex-col gap-2">
+                {[
+                  { id: "baseplate", label: "Baseplate" },
+                  { id: "embedment", label: "Embedment" },
+                ].map((item) => {
+                  const isSelected = installationType === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setInstallationType(item.id)}
+                      className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
+                          : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      {isSelected ? (
+                        <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                      ) : (
+                        <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            <div className="mt-6 flex items-center justify-end gap-2.5">
-              <button
-                type="button"
-                onClick={() => setInDevModal(null)}
-                className="px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100 rounded border border-gray-300"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setInDevModal(null);
-                  navigate("/project-tools/lighting-project/setup");
-                }}
-                className="px-4 py-2 text-xs font-semibold text-white bg-gray-900 hover:bg-gray-800 rounded border border-gray-900"
-              >
-                Open Lighting Project Setup
-              </button>
+            {/* Section 3: Baseplate -> Lowest Height Position */}
+            {installationType === "baseplate" && (
+              <div className="pt-2 border-t border-gray-200">
+                <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
+                  Select Lowest Height Position
+                </label>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { id: "onGL", label: "On GL" },
+                    { id: "underGL", label: "Under GL" },
+                  ].map((pos) => {
+                    const isSelected = lowestHeightPosition === pos.id;
+                    return (
+                      <button
+                        key={pos.id}
+                        type="button"
+                        onClick={() => setLowestHeightPosition(pos.id)}
+                        className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
+                            : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
+                        }`}
+                      >
+                        <span>{pos.label}</span>
+                        {isSelected ? (
+                          <CheckCircle2 className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Section 3: Embedment -> Embedment Length */}
+            {installationType === "embedment" && (
+              <div className="pt-2 border-t border-gray-200">
+                <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
+                  Embedment Length
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    value={embedmentLength}
+                    onChange={(e) => setEmbedmentLength(e.target.value)}
+                    placeholder="1800"
+                    className="w-full pl-3 pr-12 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-700 bg-white"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs md:text-sm pointer-events-none">
+                    mm
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── RIGHT PANEL: Height Selector & Diagram Preview ── */}
+          <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col bg-white">
+            {/* Height selection row */}
+            <div className="mb-4">
+              <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2">
+                Select Pole Height
+              </label>
+
+              {!selectedStandard ? (
+                <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
+                  Select a pole standard type first.
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {availableHeights.map((h) => {
+                    const isSelected = selectedHeight === h.key;
+                    return (
+                      <button
+                        key={h.key}
+                        type="button"
+                        onClick={() => setSelectedHeight(h.key)}
+                        className={`px-4 py-2 rounded border text-xs md:text-sm font-medium transition-all cursor-pointer ${
+                          isSelected
+                            ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm"
+                            : "border-gray-300 text-gray-700 hover:border-gray-400 bg-white"
+                        }`}
+                      >
+                        {h.displayLabel}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Diagram Preview Area */}
+            <div className="border border-dashed border-gray-300 rounded p-4 flex-1 flex items-center justify-center min-h-[480px] lg:min-h-[580px] bg-white relative overflow-hidden">
+              {!selectedStandard || !currentImage ? (
+                <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
+                  Select a standard to preview the pole.
+                </div>
+              ) : (
+                <div className="relative w-full h-full flex items-center justify-center">
+                  {/* Aspect-ratio pinned wrapper matching diagramLayout viewBox */}
+                  <div
+                    className="relative flex items-center justify-center max-w-full max-h-full"
+                    style={
+                      diagramLayout
+                        ? {
+                            width: `min(100%, calc(520px * ${diagramLayout.viewBox.width} / ${diagramLayout.viewBox.height}))`,
+                            aspectRatio: `${diagramLayout.viewBox.width} / ${diagramLayout.viewBox.height}`,
+                            height: "520px",
+                          }
+                        : { height: "520px" }
+                    }
+                  >
+                    {/* Background SVG diagram */}
+                    <img
+                      src={currentImage}
+                      alt={`${selectedStandard} diagram`}
+                      className="w-full h-full object-contain pointer-events-none select-none"
+                    />
+
+                    {/* Render Dimension Text Overlays */}
+                    {diagramLabels?.map((label) => (
+                      <div
+                        key={`${label.key}:${label.lines.join("|")}`}
+                        style={label.style}
+                        className={`absolute pointer-events-none whitespace-nowrap text-[11px] md:text-xs leading-none text-blue-700 font-medium ${
+                          label.isCentered ? "text-center" : ""
+                        }`}
+                      >
+                        {label.isLeader ? (
+                          <>
+                            <div>{label.lines[0]}</div>
+                            <div className="h-px bg-transparent my-0.5" />
+                            <div>{label.lines[1]}</div>
+                          </>
+                        ) : (
+                          label.lines.map((l) => <div key={l}>{l}</div>)
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
-      )}
+
+        {/* ── BOTTOM ACTIONS ── */}
+        <div className="mt-6 flex items-center justify-between pt-4 border-t border-gray-200">
+          <button
+            type="button"
+            onClick={handleReset}
+            className="px-4 py-2 border border-red-300 text-red-600 hover:bg-red-50 rounded text-xs md:text-sm font-medium cursor-pointer transition-colors"
+          >
+            Reset
+          </button>
+
+          <button
+            type="button"
+            onClick={handleNext}
+            disabled={!isFormComplete}
+            className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${
+              isFormComplete
+                ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm"
+                : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
+            }`}
+          >
+            <span>Next</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
