@@ -31,9 +31,6 @@
  *    - STANDARD MODE: Jika user memilih salah satu tipe standar (IS, IA, LS, LA, TS, TA),
  *      tombol NEXT dinonaktifkan (disabled) sampai seluruh isian wajib terpenuhi
  *      (Installation Type -> Ground Position / Embedment Length -> Pole Height).
- * 6. Tampilan Wireframe (Zero Decorative Colors):
- *    - Menggunakan palet monokromatik netral (hitam, putih, abu-abu wireframe).
- *    - Tombol Reset mempertahankan ikon RotateCcw dengan styling wireframe netral.
  * ============================================================================
  */
 
@@ -119,16 +116,19 @@ export default function ProjectToolsPage() {
       const numM = Number(key);
       const isUnderGL =
         installationType === "baseplate" && lowestHeightPosition === "underGL";
-      const displayLabel = isUnderGL
-        ? `${numM} m`
-        : `${Math.round(numM)} m`;
+      const displayLabel = isUnderGL ? `${numM} m` : `${Math.round(numM)} m`;
       return {
         key,
         numM,
         displayLabel,
       };
     });
-  }, [selectedStandard, effectiveGroundKey, installationType, lowestHeightPosition]);
+  }, [
+    selectedStandard,
+    effectiveGroundKey,
+    installationType,
+    lowestHeightPosition,
+  ]);
 
   // Menjaga agar selectedHeight hanya dibersihkan jika tidak lagi valid
   // (TIDAK melakukan auto-select; user wajib memilih sendiri)
@@ -149,7 +149,9 @@ export default function ProjectToolsPage() {
       return EMBED_IMAGE_MAP[selectedStandard] || null;
     }
     if (installationType === "baseplate" && lowestHeightPosition) {
-      return DIAGRAM_IMAGE_MAP[selectedStandard]?.[lowestHeightPosition] || null;
+      return (
+        DIAGRAM_IMAGE_MAP[selectedStandard]?.[lowestHeightPosition] || null
+      );
     }
     return null;
   }, [selectedStandard, installationType, lowestHeightPosition]);
@@ -411,10 +413,7 @@ export default function ProjectToolsPage() {
               ],
         ),
       );
-      sessionStorage.setItem(
-        "lighting-project_arms",
-        JSON.stringify(rawArms),
-      );
+      sessionStorage.setItem("lighting-project_arms", JSON.stringify(rawArms));
       sessionStorage.setItem(
         "lighting-project_overheadWires",
         JSON.stringify([]),
@@ -488,7 +487,7 @@ export default function ProjectToolsPage() {
         "lighting-project_poleConfig",
         JSON.stringify({
           lowestHeight:
-            installationType === "embedment" ? (embedmentLength || "0") : "0",
+            installationType === "embedment" ? embedmentLength || "0" : "0",
           overDesign: "1",
         }),
       );
@@ -510,7 +509,8 @@ export default function ProjectToolsPage() {
           Pole type configuration
         </h1>
         <p className="text-gray-500 mt-1 text-xs md:text-sm">
-          Choose a road lighting pole standard to apply its predefined specifications.
+          Choose a road lighting pole standard to apply its predefined
+          specifications.
         </p>
       </div>
 
@@ -518,7 +518,8 @@ export default function ProjectToolsPage() {
       <div className="mb-6 px-4 py-2.5 rounded border border-gray-300 bg-gray-50 text-gray-700 text-xs md:text-sm flex items-center justify-between">
         <p>
           If not using a Road Lighting Pole standard, click{" "}
-          <span className="font-bold text-gray-900">NEXT</span> to enter specifications manually.
+          <span className="font-bold text-gray-900">NEXT</span> to enter
+          specifications manually.
         </p>
       </div>
 
