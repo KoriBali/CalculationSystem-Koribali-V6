@@ -7,11 +7,7 @@ import {
   EyeOff,
   ChevronRight,
   AlertCircle,
-  ShieldCheck,
   X,
-  CheckCircle,
-  Layers,
-  FileText,
   Loader2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -34,7 +30,6 @@ export default function LoginPage() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
-  const [activeSlide, setActiveSlide] = useState(0);
   const [isGuestSigningIn, setIsGuestSigningIn] = useState(false);
 
   const handleGuestLogin = async () => {
@@ -66,32 +61,6 @@ export default function LoginPage() {
       setIsGuestSigningIn(false);
     }
   };
-
-  // Auto-playing carousel timer
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setActiveSlide((prev) => (prev + 1) % 3);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const features = [
-    {
-      title: "Precision Engineering",
-      desc: "Empower your structural calculations with high precision based on the latest engineering standards.",
-      icon: <CheckCircle className="w-8 h-8 md:w-10 md:h-10 text-gray-700" />,
-    },
-    {
-      title: "All-in-One Workflow",
-      desc: "Stop juggling separate design and calculation tasks. Streamline everything into one seamless platform.",
-      icon: <Layers className="w-8 h-8 md:w-10 md:h-10 text-gray-700" />,
-    },
-    {
-      title: "Instant Validation",
-      desc: "Get immediate OK/NG calculation reports to ensure your structures are completely safe for deployment.",
-      icon: <FileText className="w-8 h-8 md:w-10 md:h-10 text-gray-700" />,
-    },
-  ];
 
   const formik = useFormik({
     initialValues: {
@@ -128,15 +97,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row font-sans antialiased">
       {/* LEFT PANEL */}
-      <div className="w-full md:w-[45%] lg:w-[40%] flex flex-col p-6 md:p-12 lg:p-20 bg-white border-b md:border-b-0 md:border-r border-gray-300 text-gray-900 md:min-h-screen">
-        {/* Top text */}
-        <div className="hidden md:block mb-10">
-          <p className="text-gray-500 text-xs font-medium tracking-wide uppercase">
-            Engineering-grade calculations
-          </p>
-        </div>
-
-        {/* Center / Hero text */}
+      <div className="w-full md:w-[45%] lg:w-[40%] flex flex-col justify-center p-6 md:p-12 lg:p-20 bg-white border-b md:border-b-0 md:border-r border-gray-300 text-gray-900 md:min-h-screen">
         <div className="text-center md:text-left">
           <h2 className="text-[32px] leading-[1.15] md:text-5xl lg:text-[54px] font-semibold md:leading-[1.1] tracking-tight text-gray-900">
             Design
@@ -145,53 +106,6 @@ export default function LoginPage() {
             <br />
             System
           </h2>
-        </div>
-
-        {/* Animated Features Carousel */}
-        <div className="hidden md:flex flex-col justify-end flex-1 relative w-full max-w-[480px] mt-12 mb-10 mx-auto md:mx-0">
-          <div className="relative w-full h-[220px] flex flex-col justify-end border border-gray-200 rounded p-4 bg-gray-50">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activeSlide}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.3 }}
-                className="w-full"
-              >
-                <div className="flex items-center gap-4 mb-4">
-                  {features[activeSlide].icon}
-                  <h3 className="font-bold text-2xl lg:text-3xl text-gray-900 tracking-tight">
-                    {features[activeSlide].title}
-                  </h3>
-                </div>
-                <p className="text-gray-600 text-base md:text-lg leading-relaxed font-normal">
-                  "{features[activeSlide].desc}"
-                </p>
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          {/* Dots */}
-          <div className="flex gap-2 mt-6">
-            {features.map((_, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => setActiveSlide(idx)}
-                aria-label={`Slide ${idx + 1}`}
-                className={`h-2 rounded transition-all duration-300 ${
-                  activeSlide === idx ? "w-6 bg-gray-800" : "w-2 bg-gray-300"
-                }`}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Bottom text */}
-        <div className="hidden md:flex items-center gap-3 text-[11px] font-bold text-gray-600 uppercase tracking-wider mt-auto">
-          <ShieldCheck size={18} />
-          Authorized Personnel Only
         </div>
       </div>
 
@@ -333,19 +247,6 @@ export default function LoginPage() {
               </button>
             </div>
           </form>
-        </div>
-
-        {/* BOTTOM FOOTER */}
-        <div className="mt-16 text-center md:text-left flex flex-col md:flex-row justify-between items-center text-xs text-gray-500 font-medium">
-          <p>© {new Date().getFullYear()} Kori Bali Inc.</p>
-          <div className="flex gap-4 mt-2 md:mt-0">
-            <span className="cursor-pointer hover:text-gray-700">
-              Privacy Policy
-            </span>
-            <span className="cursor-pointer hover:text-gray-700">
-              Terms of Use
-            </span>
-          </div>
         </div>
       </div>
     </div>
