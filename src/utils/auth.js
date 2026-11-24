@@ -1,33 +1,48 @@
-// utils/auth.js
+// =============================================================================
+// FILE: src/utils/auth.js
+// DESKRIPSI: Utilitas penyimpanan dan manajemen sesi autentikasi pengguna.
+// PENYIMPANAN:
+//  - Access Token  : Disimpan di Cookie browser (session cookie, hilang saat browser ditutup).
+//  - Refresh Token : Disimpan di Cookie browser (expires: 7 hari).
+//  - User Profile  : Disimpan di localStorage (agar data user tetap tersimpan saat reload).
+// =============================================================================
+
 import Cookies from "js-cookie";
 
 const ACCESS_TOKEN_KEY = "auth_access_token";
 const REFRESH_TOKEN_KEY = "auth_refresh_token";
 const USER_KEY = "auth_user";
 
-const REFRESH_TOKEN_EXPIRES_DAYS = 7; // matches BE's backup token lifetime
+// Masa berlaku refresh token di browser (7 hari, disesuaikan dengan backend)
+const REFRESH_TOKEN_EXPIRES_DAYS = 7;
 
 const cookieOptions = {
   secure: window.location.protocol === "https:",
   sameSite: "strict",
 };
 
-// Save login session — access token is a session cookie (cleared on browser
-// close, since it's short-lived and kept fresh by the refresh flow anyway).
-// Refresh token persists for REFRESH_TOKEN_EXPIRES_DAYS.
-// User profile (incl. role) is stored in localStorage so it survives browser
-// restarts — without it, role-based guards flash "drafter" until getMe() returns.
+/**
+ * Menyimpan seluruh sesi login baru ke dalam Cookie & LocalStorage.
+ * 
+ * @param {Object} session - Data sesi baru
+ * @param {string} session.accessToken - JWT token akses jangka pendek
+ * @param {string} session.refreshToken - JWT token refresh jangka panjang
+ * @param {Object|null} session.user - Data profil user (opsional)
+ */
 export const setAuthSession = ({ accessToken, refreshToken, user }) => {
   Cookies.set(ACCESS_TOKEN_KEY, accessToken, cookieOptions);
   Cookies.set(REFRESH_TOKEN_KEY, refreshToken, {
     ...cookieOptions,
     expires: REFRESH_TOKEN_EXPIRES_DAYS,
   });
-  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  if (user) {
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  }
 };
 
-// Update just the access (and optionally rotated refresh) token after a
-// successful /refresh call, without touching the stored user.
+/**
+ * Memperbarui token saja (digunakan saat interceptor me-refresh access token).
+ */
 export const setTokens = ({ accessToken, refreshToken }) => {
   Cookies.set(ACCESS_TOKEN_KEY, accessToken, cookieOptions);
   if (refreshToken) {
@@ -38,35 +53,51 @@ export const setTokens = ({ accessToken, refreshToken }) => {
   }
 };
 
-// Update just the stored user profile (e.g. after a getMe() call).
+/**
+ * Menyimpan atau memperbarui data profil pengguna ke localStorage.
+ */
 export const setUser = (user) => {
   localStorage.setItem(USER_KEY, JSON.stringify(user));
 };
 
-// Clear login session
+/**
+ * Menghapus seluruh sesi autentikasi (logout atau sesi kedaluwarsa).
+ */
 export const clearAuthSession = () => {
   Cookies.remove(ACCESS_TOKEN_KEY);
   Cookies.remove(REFRESH_TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
 };
 
+/**
+ * Mengambil access token aktif dari cookie.
+ */
 export const getAccessToken = () => Cookies.get(ACCESS_TOKEN_KEY) || null;
 
+/**
+ * Mengambil refresh token aktif dari cookie.
+ */
 export const getRefreshToken = () => Cookies.get(REFRESH_TOKEN_KEY) || null;
 
-// Get logged in user
+/**
+ * Mengambil profil user yang tersimpan di localStorage.
+ */
 export const getUser = () => {
   const user = localStorage.getItem(USER_KEY);
-
   return user ? JSON.parse(user) : null;
 };
 
-// A refresh token present means there's a session worth trying to keep
-// alive, even if the access token has momentarily expired.
+/**
+ * Memeriksa apakah pengguna saat ini terautentikasi.
+ * Selama refresh token masih ada, sesi dianggap valid/bisa di-refresh.
+ */
 export const isAuthenticated = () => {
   return !!getRefreshToken();
 };
 
+/**
+ * Memeriksa apakah user saat ini login sebagai akun tamu (Guest).
+ */
 export const isGuestUser = () => {
   const user = getUser();
   const token = getAccessToken();
@@ -78,6 +109,9 @@ export const isGuestUser = () => {
   );
 };
 
+/**
+ * Memeriksa akun guest berdasarkan email / username.
+ */
 export const isGuestAccount = () => {
   const user = getUser();
   return Boolean(
