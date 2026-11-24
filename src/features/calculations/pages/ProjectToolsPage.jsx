@@ -109,12 +109,21 @@ export default function ProjectToolsPage() {
     const beOptions =
       heightOptionsByStandard?.[selectedStandard]?.[effectiveGroundKey];
     if (beOptions && beOptions.length > 0) {
-      return beOptions.map((opt) => ({
-        key: opt.id,
-        heightId: opt.heightId,
-        numM: Number(opt.id),
-        displayLabel: opt.displayMeter || `${opt.id} m`,
-      }));
+      const seen = new Set();
+      const deduped = [];
+      for (const opt of beOptions) {
+        const label = opt.displayMeter || `${opt.id} m`;
+        if (!seen.has(label)) {
+          seen.add(label);
+          deduped.push({
+            key: opt.id,
+            heightId: opt.heightId,
+            numM: Number(opt.id),
+            displayLabel: label,
+          });
+        }
+      }
+      return deduped;
     }
 
     // Fallback katalog statis
@@ -125,18 +134,39 @@ export default function ProjectToolsPage() {
     const rawKeys = Object.keys(entries);
     const sorted = [...rawKeys].sort((a, b) => Number(a) - Number(b));
 
-    return sorted.map((key) => {
+    const seenStd = new Set();
+    const seenLabels = new Set();
+    const result = [];
+
+    for (const key of sorted) {
+      const entry = entries[key] || {};
+      const stdId = entry.standardId;
+      if (stdId && seenStd.has(stdId)) continue;
+      if (stdId) seenStd.add(stdId);
+
       const numM = Number(key);
       const isUnderGL =
         installationType === "baseplate" && lowestHeightPosition === "underGL";
-      const displayLabel = isUnderGL ? `${numM} m` : `${Math.round(numM)} m`;
-      return {
+      const displayLabel = isUnderGL
+        ? `${numM} m`
+        : numM === 4.5 || numM === 4.6
+          ? "4.5 m"
+          : numM === 5 || numM === 5.1
+            ? "5 m"
+            : `${Math.round(numM)} m`;
+
+      if (seenLabels.has(displayLabel)) continue;
+      seenLabels.add(displayLabel);
+
+      result.push({
         key,
-        heightId: entries[key]?.standardId || null,
+        heightId: stdId || null,
         numM,
         displayLabel,
-      };
-    });
+      });
+    }
+
+    return result;
   }, [
     selectedStandard,
     effectiveGroundKey,
@@ -657,7 +687,7 @@ export default function ProjectToolsPage() {
           </div>
 
           {/* Diagram Preview Area */}
-          <div className="border border-dashed border-gray-300 rounded p-4 md:p-6 flex-1 flex items-center justify-center min-h-[680px] md:min-h-[780px] lg:min-h-[860px] xl:min-h-[900px] bg-white relative overflow-hidden">
+          <div className="border border-dashed border-gray-300 rounded p-4 md:p-6 flex-1 flex items-center justify-center min-h-[520px] md:min-h-[580px] lg:min-h-[640px] xl:min-h-[680px] bg-white relative overflow-hidden">
             {!selectedStandard || !installationType ? (
               <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
                 Select a standard to preview the pole.
@@ -674,13 +704,13 @@ export default function ProjectToolsPage() {
               <div className="relative w-full h-full flex items-center justify-center py-4">
                 {/* Aspect-ratio pinned wrapper matching diagramLayout viewBox */}
                 <div
-                  className="relative flex items-center justify-center max-w-full max-h-full h-[640px] md:h-[740px] lg:h-[820px] xl:h-[860px]"
+                  className="relative flex items-center justify-center max-w-full max-h-full h-[500px] md:h-[560px] lg:h-[620px] xl:h-[650px]"
                   style={
                     diagramLayout
                       ? {
                           aspectRatio: `${diagramLayout.viewBox.width} / ${diagramLayout.viewBox.height}`,
                         }
-                      : { height: "820px" }
+                      : { height: "620px" }
                   }
                 >
                   {/* Background SVG diagram */}

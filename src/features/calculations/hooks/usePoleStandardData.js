@@ -48,40 +48,45 @@ function deriveFallbackHeightOptions() {
     STANDARD_POLE_DATA?.tapered || STANDARD_POLE_DATA?.taper || {};
 
   Object.entries(tapered).forEach(([shortCode, groups]) => {
-    let onGLKeys = Object.keys(groups.onGL || {});
-    let underGLKeys = Object.keys(groups.underGL || {});
-
-    const isTypeWith100 = shortCode !== "IS" && shortCode !== "IA";
-    if (isTypeWith100) {
-      // Untuk tipe lengan (LS, LA, TS, TA): prioritaskan varian ketinggian nominal arm
-      const has100OnGL = onGLKeys.some(
-        (k) => String(k).includes(".1") || String(k).includes(".6"),
+    const processGroup = (groundGroup, isUnderGL) => {
+      const rawKeys = Object.keys(groundGroup || {}).sort(
+        (a, b) => Number(a) - Number(b),
       );
-      if (has100OnGL) {
-        onGLKeys = onGLKeys.filter(
-          (k) => String(k).includes(".1") || String(k).includes(".6"),
-        );
-      }
-      const has100UnderGL = underGLKeys.some(
-        (k) => String(k).includes(".4") || String(k).includes(".9"),
-      );
-      if (has100UnderGL) {
-        underGLKeys = underGLKeys.filter(
-          (k) => String(k).includes(".4") || String(k).includes(".9"),
-        );
-      }
-    }
+      const seenStd = new Set();
+      const seenLabels = new Set();
+      const options = [];
 
-    const toOption = (k) => ({
-      id: String(k),
-      heightId: null,
-      label: `${Math.round(Number(k) * 1000)} mm`,
-      displayMeter: `${Math.round(Number(k))} m`,
-    });
+      for (const k of rawKeys) {
+        const item = groundGroup[k];
+        const stdId = item?.standardId;
+        if (stdId && seenStd.has(stdId)) continue;
+        if (stdId) seenStd.add(stdId);
+
+        const numM = Number(k);
+        const displayMeter = isUnderGL
+          ? `${numM} m`
+          : numM === 4.5 || numM === 4.6
+            ? "4.5 m"
+            : numM === 5 || numM === 5.1
+              ? "5 m"
+              : `${Math.round(numM)} m`;
+
+        if (seenLabels.has(displayMeter)) continue;
+        seenLabels.add(displayMeter);
+
+        options.push({
+          id: String(k),
+          heightId: stdId || null,
+          label: `${Math.round(numM * 1000)} mm`,
+          displayMeter,
+        });
+      }
+      return options;
+    };
 
     result[shortCode] = {
-      onGL: onGLKeys.sort((a, b) => Number(a) - Number(b)).map(toOption),
-      underGL: underGLKeys.sort((a, b) => Number(a) - Number(b)).map(toOption),
+      onGL: processGroup(groups.onGL, false),
+      underGL: processGroup(groups.underGL, true),
     };
   });
 
@@ -147,24 +152,32 @@ function deriveHeightOptions(taperEntries) {
     const heightSet = new Set(heights.map((h) => Math.round(h * 10)));
     const onGL = [];
     const underGL = [];
+    const seenOnGL = new Set();
+    const seenUnderGL = new Set();
 
     heights.forEach((h) => {
       const hasUnderGLPair = heightSet.has(Math.round((h + 0.3) * 10));
       const isUnderGLPair = heightSet.has(Math.round((h - 0.3) * 10));
 
-      if (hasUnderGLPair) {
+      if (hasUnderGLPair && !seenOnGL.has(h)) {
+        seenOnGL.add(h);
         onGL.push(h);
-      } else if (isUnderGLPair) {
+      } else if (isUnderGLPair && !seenUnderGL.has(h)) {
+        seenUnderGL.add(h);
         underGL.push(h);
       }
     });
 
-    const toOption = (h) => ({
-      id: String(h),
-      heightId: heightMap.get(Math.round(h * 10)) || null,
-      label: `${Math.round(h * 1000)} mm`,
-      displayMeter: `${Math.round(h)} m`,
-    });
+    const toOption = (h) => {
+      const isDecimal = h % 1 !== 0;
+      const displayMeter = isDecimal ? `${h} m` : `${Math.round(h)} m`;
+      return {
+        id: String(h),
+        heightId: heightMap.get(Math.round(h * 10)) || null,
+        label: `${Math.round(h * 1000)} mm`,
+        displayMeter,
+      };
+    };
 
     if (onGL.length > 0 || underGL.length > 0) {
       result[shortCode] = {
