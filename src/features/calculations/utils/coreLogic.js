@@ -370,11 +370,17 @@ export const buildCalculationDraftPayload = (projectType, sessionData) => {
           (e) => e.name && (shortCode ? e.name.includes(shortCode) : true)
         );
         if (targetEntry?.poleStandardHeights) {
+          const isUnder =
+            taperStandard?.groundPosition === "underGL" ||
+            taperStandard?.groundPosition === "under_gl" ||
+            Number(poleConfig?.lowestHeight) < 0;
           const hM = Number(taperStandard.height);
+          const effectiveM = isUnder ? hM + 0.3 : hM;
+          const targetMm = Math.round(effectiveM * 1000);
           const match = targetEntry.poleStandardHeights.find((h) => {
             const num = Number(h.height);
             const m = num > 100 ? num / 1000 : num;
-            return Math.abs(m - hM) < 0.05 || Math.abs(num - hM) < 0.05;
+            return Math.abs(m - effectiveM) < 0.05 || Math.abs(num - targetMm) < 50;
           });
           if (match?.id) poleStandardHeightId = match.id;
         }

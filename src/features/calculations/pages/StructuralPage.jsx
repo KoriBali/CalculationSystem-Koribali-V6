@@ -72,6 +72,7 @@ import {
   adjustPolesForLowestHeight,
   getStandardOnGLPoles,
 } from "../utils/underGLStandardHandler";
+import { resolveStandardHeightId } from "../services/poleStandardService";
 
 // ─── 1. STATIC CONFIGURATION OPTIONS ──────────────────────────────────────────
 const DESIGN_STANDARDS = [
@@ -648,20 +649,35 @@ export default function StructuralPage() {
   //      the user must recalculate before generating reports.
   const baseOnGLPolesRef = useRef(null);
   const baseUnderPolesRef = useRef(null);
+  const baseOnGLHeightIdRef = useRef(null);
+  const baseUnderGLHeightIdRef = useRef(null);
   const currentGroundModeRef = useRef("onGL");
   const lastProcessedLowestHeightRef = useRef(null);
   const [isSwitchingGroundMode, setIsSwitchingGroundMode] = useState(false);
 
-  // Initialize cached On GL poles from standardPreset or initial form state
+  // Initialize cached On GL poles and height ID from standardPreset or initial form state
   useEffect(() => {
-    if (isStandard && (!baseOnGLPolesRef.current || baseOnGLPolesRef.current.length === 0)) {
-      if (standardPreset?.poles && standardPreset.poles.length > 0) {
-        baseOnGLPolesRef.current = JSON.parse(JSON.stringify(standardPreset.poles));
-      } else if (poleForm.poles && poleForm.poles.length > 0) {
-        baseOnGLPolesRef.current = JSON.parse(JSON.stringify(poleForm.poles));
+    if (isStandard) {
+      if (!baseOnGLHeightIdRef.current) {
+        baseOnGLHeightIdRef.current =
+          poleStandardForm.taperPoleStandard?.poleStandardHeightId ||
+          standardPreset?.poleStandardHeightId ||
+          null;
+      }
+      if (!baseOnGLPolesRef.current || baseOnGLPolesRef.current.length === 0) {
+        if (standardPreset?.poles && standardPreset.poles.length > 0) {
+          baseOnGLPolesRef.current = JSON.parse(JSON.stringify(standardPreset.poles));
+        } else if (poleForm.poles && poleForm.poles.length > 0) {
+          baseOnGLPolesRef.current = JSON.parse(JSON.stringify(poleForm.poles));
+        }
       }
     }
-  }, [isStandard, standardPreset, poleForm.poles]);
+  }, [
+    isStandard,
+    standardPreset,
+    poleForm.poles,
+    poleStandardForm.taperPoleStandard?.poleStandardHeightId,
+  ]);
 
   // Reactive listener on lowestHeight changes
   useEffect(() => {
@@ -698,20 +714,40 @@ export default function StructuralPage() {
         try {
           setIsSwitchingGroundMode(true);
 
-          // Save current On GL poles to cache before switching if not already cached
+          // Save current On GL poles and height ID to cache before switching if not already cached
           if (!baseOnGLPolesRef.current || baseOnGLPolesRef.current.length === 0) {
             baseOnGLPolesRef.current = JSON.parse(JSON.stringify(poleForm.poles));
+          }
+          if (!baseOnGLHeightIdRef.current) {
+            baseOnGLHeightIdRef.current =
+              poleStandardForm.taperPoleStandard?.poleStandardHeightId ||
+              standardPreset?.poleStandardHeightId ||
+              null;
+          }
+
+          // Resolve Under GL height ID from master data
+          let underGLHeightId = baseUnderGLHeightIdRef.current;
+          if (!underGLHeightId) {
+            const underKey = getUnderGLKey(nominalHeight);
+            const underOption = heightOptionsByStandard?.[shortCode]?.underGL?.find(
+              (opt) => opt.id === underKey || opt.displayMeter === `${underKey} m`,
+            );
+            underGLHeightId = underOption?.heightId || null;
+            if (!underGLHeightId) {
+              underGLHeightId = await resolveStandardHeightId({
+                poleType: shortCode,
+                nominalHeight,
+                isUnderGL: true,
+              });
+            }
+            if (underGLHeightId) {
+              baseUnderGLHeightIdRef.current = underGLHeightId;
+            }
           }
 
           // Fetch base Under GL poles (-300 mm baseline) from BE API / local catalog if not cached
           let baseUnder = baseUnderPolesRef.current;
           if (!baseUnder || baseUnder.length === 0) {
-            const underKey = getUnderGLKey(nominalHeight);
-            const underOption = heightOptionsByStandard?.[shortCode]?.underGL?.find(
-              (opt) => opt.id === underKey || opt.displayMeter === `${underKey} m`,
-            );
-            const underGLHeightId = underOption?.heightId || null;
-
             baseUnder = await fetchStandardUnderGLPoles({
               shortCode,
               nominalHeight,
@@ -729,7 +765,10 @@ export default function StructuralPage() {
             poleForm.setPoles(adjustedPoles);
 
             currentGroundModeRef.current = "underGL";
-            poleStandardForm.updateTaperPoleStandard?.({ groundPosition: "underGL" });
+            poleStandardForm.updateTaperPoleStandard?.({
+              groundPosition: "underGL",
+              ...(underGLHeightId ? { poleStandardHeightId: underGLHeightId } : {}),
+            });
             updateCondition({ groundPosition: "under_gl" });
 
             // Invalidate calculation state so user recalculates with Under GL specifications
@@ -753,7 +792,19 @@ export default function StructuralPage() {
           }
 
           currentGroundModeRef.current = "onGL";
-          poleStandardForm.updateTaperPoleStandard?.({ groundPosition: "onGL" });
+          const onGLHeightId =
+            baseOnGLHeightIdRef.current ||
+            standardPreset?.poleStandardHeightId ||
+            await resolveStandardHeightId({
+              poleType: shortCode,
+              nominalHeight,
+              isUnderGL: false,
+            });
+
+          poleStandardForm.updateTaperPoleStandard?.({
+            groundPosition: "onGL",
+            ...(onGLHeightId ? { poleStandardHeightId: onGLHeightId } : {}),
+          });
           updateCondition({ groundPosition: "on_gl" });
 
           // Invalidate calculation state so user recalculates with On GL specifications
@@ -768,6 +819,7 @@ export default function StructuralPage() {
     poleConfigForm.poleConfig?.lowestHeight,
     standardPreset,
     poleStandardForm.taperPoleStandard,
+    heightOptionsByStandard,
     heightOptionsByStandard,
     updateCondition,
   ]);

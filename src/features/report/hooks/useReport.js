@@ -15,7 +15,10 @@ import {
   getMasterDesignStandards,
   getMasterMaterials,
 } from "../../calculations/services/masterDataService";
-import { getPoleStandardData } from "../../calculations/services/poleStandardService";
+import {
+  getPoleStandardData,
+  resolveStandardHeightId,
+} from "../../calculations/services/poleStandardService";
 import {
   resolveDesignStandardId,
   mapCalculationStepPoles,
@@ -475,8 +478,24 @@ export function useReport(paramProjectType) {
             ? Number(taperStandard.embedmentLength)
             : null;
 
+        let effectivePoleHeightId = poleHeightId;
+        if (isStandard && poleStandardType) {
+          const nominalH =
+            taperStandard?.height ||
+            liveCondition?.height ||
+            (rawCasePoles?.[0]?.zHeight ? Number(rawCasePoles[0].zHeight) / 1000 : null);
+          const dynamicId = await resolveStandardHeightId({
+            poleType: poleStandardType,
+            nominalHeight: nominalH,
+            isUnderGL: groundPosition === "under_gl",
+          });
+          if (dynamicId) {
+            effectivePoleHeightId = dynamicId;
+          }
+        }
+
         const runResult = await createCaseRun(reqId, activeDraftId, {
-          ...(isStandard && poleHeightId ? { poleStandardHeightId: poleHeightId } : {}),
+          ...(isStandard && effectivePoleHeightId ? { poleStandardHeightId: effectivePoleHeightId } : {}),
           stepPoles: calcCaseStepPoles,
           evaluatedPositionsM: evaluatedPositionM,
           evaluatedPositionM,
@@ -648,6 +667,21 @@ export function useReport(paramProjectType) {
               taperStandard?.embedmentLength
                 ? Number(taperStandard.embedmentLength)
                 : null;
+
+            if (isStandard && poleStandardType) {
+              const nominalH =
+                taperStandard?.height ||
+                liveCondition?.height ||
+                (rawPolesList?.[0]?.zHeight ? Number(rawPolesList[0].zHeight) / 1000 : null);
+              const dynamicId = await resolveStandardHeightId({
+                poleType: poleStandardType,
+                nominalHeight: nominalH,
+                isUnderGL: groundPosition === "under_gl",
+              });
+              if (dynamicId) {
+                resolvedPoleHeightId = dynamicId;
+              }
+            }
 
             const toolPayload = {
               conditions: {

@@ -17,6 +17,7 @@ import {
   getMasterDesignStandards,
   getMasterMaterials,
 } from "../../services/masterDataService";
+import { resolveStandardHeightId } from "../../services/poleStandardService";
 
 function transformBackendCalculationResult(
   res,
@@ -171,14 +172,18 @@ export async function executePoleCalculation({
   // ── Penyiapan parameter kalkulasi (Standard vs Custom) ──
   const isStandard = condition?.poleType === "standard";
 
-  // poleStandardHeightId:
-  // - Mode standard: ambil dari taperPoleStandard atau straightPoleStandard
-  // - Mode custom: jangan sertakan / null
-  const poleStandardHeightId = isStandard
-    ? (taperPoleStandard?.poleStandardHeightId ||
-        straightPoleStandard?.poleStandardHeightId ||
-        null)
-    : null;
+  // Nilai lowestHeight dari input front end (default "0")
+  const lowestHeight =
+    poleConfig?.lowestHeight !== undefined && poleConfig?.lowestHeight !== ""
+      ? poleConfig.lowestHeight
+      : "0";
+
+  const isUnderGL =
+    isStandard &&
+    ((taperPoleStandard?.groundPosition === "underGL" ||
+      taperPoleStandard?.groundPosition === "under_gl" ||
+      condition?.groundPosition === "under_gl") ||
+      Number(lowestHeight) < 0);
 
   // Kode tipe tiang standard (misal: "IS", "IA", "LS", "LA", "TS", "TA")
   // Hanya berlaku untuk mode standard
@@ -189,11 +194,34 @@ export async function executePoleCalculation({
         "")
     : "";
 
-  // Nilai lowestHeight dari input front end (default "0")
-  const lowestHeight =
-    poleConfig?.lowestHeight !== undefined && poleConfig?.lowestHeight !== ""
-      ? poleConfig.lowestHeight
-      : "0";
+  // poleStandardHeightId:
+  // - Mode standard: ambil dari taperPoleStandard atau straightPoleStandard
+  // - Mode custom: jangan sertakan / null
+  let poleStandardHeightId = isStandard
+    ? (taperPoleStandard?.poleStandardHeightId ||
+        straightPoleStandard?.poleStandardHeightId ||
+        null)
+    : null;
+
+  // Pastikan poleStandardHeightId sinkron dengan posisi tanah (On GL vs Under GL):
+  // Di backend, ID tiang On GL (misal 8000 mm) dan Under GL (misal 8300 mm) adalah entitas berbeda.
+  // Jika groundPosition adalah under_gl, WAJIB menggunakan ID entitas Under GL agar tidak ditolak BE
+  // dengan error: "groundPosition under_gl is not available for this pole".
+  if (isStandard && poleStandardType) {
+    const nominalH =
+      taperPoleStandard?.height ||
+      condition?.height ||
+      (poles?.[0]?.zHeight ? Number(poles[0].zHeight) / 1000 : null);
+
+    const dynamicallyResolvedId = await resolveStandardHeightId({
+      poleType: poleStandardType,
+      nominalHeight: nominalH,
+      isUnderGL,
+    });
+    if (dynamicallyResolvedId) {
+      poleStandardHeightId = dynamicallyResolvedId;
+    }
+  }
 
   // Hitung evaluatedPositionsM berdasarkan spesifikasi:
   // 1. Standard:
@@ -229,10 +257,7 @@ export async function executePoleCalculation({
   const groundPosition =
     isStandard && taperPoleStandard?.installationPole === "embedment"
       ? "embedment"
-      : (isStandard &&
-          (taperPoleStandard?.groundPosition === "underGL" ||
-            taperPoleStandard?.groundPosition === "under_gl")) ||
-          Number(lowestHeight) < 0
+      : isUnderGL
         ? "under_gl"
         : "on_gl";
 

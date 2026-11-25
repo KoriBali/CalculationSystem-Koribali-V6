@@ -73,7 +73,10 @@ import {
   getCalculationDraft,
   previewProjectToolsReport,
 } from "../../../calculations/services/requestService";
-import { getPoleStandardData } from "../../../calculations/services/poleStandardService";
+import {
+  getPoleStandardData,
+  resolveStandardHeightId,
+} from "../../../calculations/services/poleStandardService";
 import { ReportLoadingModal } from "../modals/ReportLoadingModal";
 import { ReportErrorModal } from "../modals/ReportErrorModal";
 
@@ -319,6 +322,21 @@ export function ReportView() {
                 storedTaper?.embedmentLength
                   ? Number(storedTaper.embedmentLength)
                   : null;
+
+              if (isStandard && poleStandardType) {
+                const nominalH =
+                  storedTaper?.height ||
+                  storedCond?.height ||
+                  (rawPolesList?.[0]?.zHeight ? Number(rawPolesList[0].zHeight) / 1000 : null);
+                const dynamicId = await resolveStandardHeightId({
+                  poleType: poleStandardType,
+                  nominalHeight: nominalH,
+                  isUnderGL: groundPosition === "under_gl",
+                });
+                if (dynamicId) {
+                  poleHeightId = dynamicId;
+                }
+              }
 
               const toolPayload = {
                 conditions: {
