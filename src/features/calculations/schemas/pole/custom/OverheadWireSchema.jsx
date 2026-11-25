@@ -11,7 +11,7 @@ export const OverheadWireSchema = yup.object({
     .transform(toNumber)
     .typeError("Must be a number")
     .required("Required field")
-    .min(0, "Must be positive"),
+    .min(0.001, "Value must be greater than 0"),
 
   zHeight: yup
     .number()
@@ -20,6 +20,46 @@ export const OverheadWireSchema = yup.object({
     .required("Required field")
     .min(0, "Must be positive"),
 
+  weight: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .required("Required field")
+    .min(0.0001, "Value must be greater than 0"),
+
+  span: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .required("Required field")
+    .min(0.001, "Value must be greater than 0"),
+
+  saggingRatio: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .required("Required field")
+    .min(0, "Must be positive"),
+
+  nnC: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .required("Required field")
+    .min(0, "Must be positive"),
+
+  fixAngle: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .required("Required field"),
+
+  verticalAngle: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .required("Required field"),
+
   tension: yup
     .number()
     .transform(toNumber)
@@ -27,49 +67,7 @@ export const OverheadWireSchema = yup.object({
     .nullable()
     .optional(),
 
-  weight: yup
-    .number()
-    .transform(toNumber)
-    .typeError("Must be a number")
-    .nullable()
-    .optional(),
-
   angle: yup
-    .number()
-    .transform(toNumber)
-    .typeError("Must be a number")
-    .nullable()
-    .optional(),
-
-  fixAngle: yup
-    .number()
-    .transform(toNumber)
-    .typeError("Must be a number")
-    .nullable()
-    .optional(),
-
-  span: yup
-    .number()
-    .transform(toNumber)
-    .typeError("Must be a number")
-    .nullable()
-    .optional(),
-
-  saggingRatio: yup
-    .number()
-    .transform(toNumber)
-    .typeError("Must be a number")
-    .nullable()
-    .optional(),
-
-  nnC: yup
-    .number()
-    .transform(toNumber)
-    .typeError("Must be a number")
-    .nullable()
-    .optional(),
-
-  verticalAngle: yup
     .number()
     .transform(toNumber)
     .typeError("Must be a number")

@@ -9,6 +9,9 @@ import {
   mapCalculationDirectObjects,
   mapCalculationOverheadWires,
   mapCalculationArms,
+  calculateEvaluatedPositionsM,
+  calculateEvaluatedPositionM,
+  toMeters,
 } from "../../utils/requestPayloadMapper";
 import {
   getMasterDesignStandards,
@@ -165,30 +168,94 @@ export async function executePoleCalculation({
     sessionStorage.getItem("active_request_id") ||
     null;
 
-  // ── 1.A. JIKA DALAM KONTEKS CALCULATION CASE & MEMILIKI poleStandardHeightId (Old JIL Standard Taper) ──
-  if (resolvedRequestId && caseId && taperPoleStandard?.poleStandardHeightId) {
-    const std = String(condition?.designStandard || condition?.standard || "").toLowerCase();
-    const isOldJil =
-      (std.includes("jil") ||
-        std.includes("lighting") ||
-        std === "old_lighting_pole" ||
-        std === "old_jil" ||
-        std === "jil") &&
-      !std.includes("new");
+  // ── Penyiapan parameter kalkulasi (Standard vs Custom) ──
+  const isStandard = condition?.poleType === "standard";
 
-    const calcDirectObjects = mapCalculationDirectObjects(directObjects, isOldJil);
-    const materialsList = await getMasterMaterials();
-    const calcStepPoles = mapCalculationStepPoles(poles, materialsList);
-    const calcOverheadWires = mapCalculationOverheadWires(overheadWires);
-    const calcArms = mapCalculationArms(arms, materialsList, isOldJil);
+  // poleStandardHeightId:
+  // - Mode standard: ambil dari taperPoleStandard atau straightPoleStandard
+  // - Mode custom: jangan sertakan / null
+  const poleStandardHeightId = isStandard
+    ? (taperPoleStandard?.poleStandardHeightId ||
+        straightPoleStandard?.poleStandardHeightId ||
+        null)
+    : null;
 
+  // Kode tipe tiang standard (misal: "IS", "IA", "LS", "LA", "TS", "TA")
+  // Hanya berlaku untuk mode standard
+  const poleStandardType = isStandard
+    ? (taperPoleStandard?.poleType ||
+        condition?.taperPoleType ||
+        straightPoleStandard?.poleType ||
+        "")
+    : "";
+
+  // Nilai lowestHeight dari input front end (default "0")
+  const lowestHeight =
+    poleConfig?.lowestHeight !== undefined && poleConfig?.lowestHeight !== ""
+      ? poleConfig.lowestHeight
+      : "0";
+
+  // Hitung evaluatedPositionsM berdasarkan spesifikasi:
+  // 1. Standard:
+  //    - IS, LS, TS => [0]
+  //    - IA, LA, TA => [heightPole2M, 0]
+  // 2. Custom:
+  //    - 1 pole => [lowestHeightM]
+  //    - >1 poles => [heightPole2M, heightPole3M, ..., lowestHeightM]
+  const evaluatedPositionsM = calculateEvaluatedPositionsM({
+    isStandard,
+    poleStandardType,
+    poles,
+    lowestHeight,
+  });
+
+  const std = String(condition?.designStandard || condition?.standard || "").toLowerCase();
+  const isOldJil =
+    (std.includes("jil") ||
+      std.includes("lighting") ||
+      std === "old_lighting_pole" ||
+      std === "old_jil" ||
+      std === "jil") &&
+    !std.includes("new");
+
+  const materialsList = await getMasterMaterials();
+
+  // Kirim spec step pole berdasarkan apa yang ada di input front end saat itu
+  const calcStepPoles = mapCalculationStepPoles(poles, materialsList);
+  const calcDirectObjects = mapCalculationDirectObjects(directObjects, isOldJil);
+  const calcOverheadWires = mapCalculationOverheadWires(overheadWires);
+  const calcArms = mapCalculationArms(arms, materialsList, isOldJil);
+
+  const groundPosition =
+    isStandard && taperPoleStandard?.installationPole === "embedment"
+      ? "embedment"
+      : (isStandard &&
+          (taperPoleStandard?.groundPosition === "underGL" ||
+            taperPoleStandard?.groundPosition === "under_gl")) ||
+          Number(lowestHeight) < 0
+        ? "under_gl"
+        : "on_gl";
+
+  const embedmentLengthMm =
+    isStandard &&
+    taperPoleStandard?.installationPole === "embedment" &&
+    taperPoleStandard?.embedmentLength
+      ? Number(taperPoleStandard.embedmentLength)
+      : null;
+
+  // ── 1.A. JIKA DALAM KONTEKS CALCULATION CASE (Standard maupun Custom) ──
+  if (resolvedRequestId && caseId) {
     try {
       const res = await calculateCase(resolvedRequestId, caseId, {
-        poleStandardHeightId: taperPoleStandard.poleStandardHeightId,
+        ...(isStandard && poleStandardHeightId ? { poleStandardHeightId } : {}),
         stepPoles: calcStepPoles,
+        evaluatedPositionsM,
+        evaluatedPositionM: evaluatedPositionsM,
         directObjects: calcDirectObjects,
         overheadWires: calcOverheadWires,
         arms: calcArms,
+        groundPosition,
+        ...(isStandard && embedmentLengthMm !== null ? { embedmentLengthMm } : {}),
       });
 
       const parsed = transformBackendCalculationResult(
@@ -204,17 +271,8 @@ export async function executePoleCalculation({
     }
   }
 
-  // ── 1.B. JIKA DALAM KONTEKS PROJECT TOOLS (Standalone / tanpa caseId) & MEMILIKI poleStandardHeightId ──
-  if (!caseId && taperPoleStandard?.poleStandardHeightId) {
-    const std = String(condition?.designStandard || condition?.standard || "").toLowerCase();
-    const isOldJil =
-      (std.includes("jil") ||
-        std.includes("lighting") ||
-        std === "old_lighting_pole" ||
-        std === "old_jil" ||
-        std === "jil") &&
-      !std.includes("new");
-
+  // ── 1.B. JIKA DALAM KONTEKS PROJECT TOOLS (Standalone / tanpa caseId) ──
+  if (!caseId) {
     // Resolve designStandardId — async fetch from master data, no hardcoded UUIDs
     let designStandardId = condition?.designStandardId;
     if (!designStandardId) {
@@ -230,21 +288,6 @@ export async function executePoleCalculation({
       );
     }
 
-    const calcDirectObjects = mapCalculationDirectObjects(directObjects, isOldJil);
-
-    const groundPosition =
-      taperPoleStandard?.installationPole === "embedment"
-        ? "embedment"
-        : taperPoleStandard?.groundPosition === "underGL" ||
-            taperPoleStandard?.groundPosition === "under_gl"
-          ? "under_gl"
-          : "on_gl";
-
-    const materialsList = await getMasterMaterials();
-    const calcStepPoles = mapCalculationStepPoles(poles, materialsList);
-    const calcOverheadWires = mapCalculationOverheadWires(overheadWires);
-    const calcArms = mapCalculationArms(arms, materialsList, isOldJil);
-
     const sessionPayload = {
       conditions: {
         designStandardId,
@@ -258,18 +301,15 @@ export async function executePoleCalculation({
           : null,
       },
       input: {
-        ...(taperPoleStandard?.poleStandardHeightId
-          ? { poleStandardHeightId: taperPoleStandard.poleStandardHeightId }
-          : {}),
+        ...(isStandard && poleStandardHeightId ? { poleStandardHeightId } : {}),
         stepPoles: calcStepPoles,
+        evaluatedPositionsM,
+        evaluatedPositionM: evaluatedPositionsM,
         directObjects: calcDirectObjects,
         overheadWires: calcOverheadWires,
         arms: calcArms,
         groundPosition,
-        embedmentLengthMm:
-          taperPoleStandard?.installationPole === "embedment" && taperPoleStandard?.embedmentLength
-            ? Number(taperPoleStandard.embedmentLength)
-            : null,
+        ...(isStandard && embedmentLengthMm !== null ? { embedmentLengthMm } : {}),
       },
     };
 
@@ -284,14 +324,30 @@ export async function executePoleCalculation({
       );
       if (parsed) return parsed;
     } catch (apiErr) {
-      throw formatCalculationError(apiErr);
+      if (apiErr?.response?.status && apiErr.response.status !== 404) {
+        throw formatCalculationError(apiErr);
+      }
+      console.warn(
+        "calculateProjectToolsPole returned 404 or failed, falling back to calculatePole...",
+        apiErr,
+      );
     }
   }
 
-  // 2. Inisialisasi base payload
+  // 2. Inisialisasi fallback payload untuk endpoint generic calculatePole
   let payload = {
     condition,
-    poleConfig,
+    poleConfig: {
+      ...poleConfig,
+      lowestHeight: String(lowestHeight),
+      groundPosition: Number(lowestHeight) < 0 ? "underGL" : "onGL",
+    },
+    ...(isStandard && poleStandardHeightId ? { poleStandardHeightId } : {}),
+    stepPoles: calcStepPoles,
+    evaluatedPositionsM,
+    evaluatedPositionM: evaluatedPositionsM,
+    groundPosition,
+    ...(isStandard && embedmentLengthMm !== null ? { embedmentLengthMm } : {}),
   };
 
   // 3. Mapping Payload berdasarkan poleType
@@ -338,7 +394,9 @@ export async function executePoleCalculation({
           poleConfig: {
             ...poleConfig,
             lowestHeight: lowestStep,
-            groundPosition: taperPoleStandard?.groundPosition || "onGL",
+            groundPosition:
+              taperPoleStandard?.groundPosition ||
+              (Number(lowestStep) < 0 ? "underGL" : "onGL"),
           },
         };
       } else if (type === "straight") {

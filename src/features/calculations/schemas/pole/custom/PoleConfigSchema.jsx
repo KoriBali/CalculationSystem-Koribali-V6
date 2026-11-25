@@ -15,6 +15,7 @@ export const PoleConfigSchema = (condition = {}) => {
       .number()
       .transform(toNumber)
       .typeError("Must be a number")
+      .required("Required field")
       .when("groundPosition", {
         is: "underGL",
         then: (schema) =>
@@ -54,6 +55,6 @@ export const PoleConfigSchema = (condition = {}) => {
       .transform(toNumber)
       .typeError("Must be a number")
       .required("Required field")
-      .min(0, "Must be positive"),
+      .min(0.001, "Value must be greater than 0"),
   });
 };

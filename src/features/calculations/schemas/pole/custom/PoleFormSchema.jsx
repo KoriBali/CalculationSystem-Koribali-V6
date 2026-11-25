@@ -21,25 +21,24 @@ export const PoleFormSchema = yup.object({
     .integer("Must be a whole number")
     .min(1, "Value must be greater than 0"),
 
-  type: yup.string().required("Required field"),
-
   lowerDiameter: yup
     .number()
     .transform(toNumber)
     .typeError("Must be a number")
     .required("Required field")
-    .min(0, "Must be positive"),
+    .min(1, "Must be greater than 0"),
 
   upperDiameter: yup
     .number()
     .transform(toNumber)
-    .when("type", {
-      is: "Taper",
+    .when(["type", "poleType"], {
+      is: (type, poleType) =>
+        (type || poleType || "").toLowerCase() === "taper",
       then: (schema) =>
         schema
           .typeError("Must be a number")
           .required("Required field")
-          .min(0, "Must be positive"),
+          .min(1, "Must be greater than 0"),
       otherwise: (schema) => schema.notRequired(),
     }),
 
@@ -48,18 +47,19 @@ export const PoleFormSchema = yup.object({
     .transform(toNumber)
     .typeError("Must be a number")
     .required("Required field")
-    .min(0, "Must be positive"),
+    .min(0.1, "Must be greater than 0"),
 
   upperThickness: yup
     .number()
     .transform(toNumber)
-    .when("type", {
-      is: "Taper",
+    .when(["type", "poleType"], {
+      is: (type, poleType) =>
+        (type || poleType || "").toLowerCase() === "taper",
       then: (schema) =>
         schema
           .typeError("Must be a number")
           .required("Required field")
-          .min(0, "Must be positive"),
+          .min(0.1, "Must be greater than 0"),
       otherwise: (schema) => schema.notRequired(),
     }),
 });

@@ -49,9 +49,12 @@ import { findRequestOfCase } from "../../../calculations/data/requestStore";
 import {
   resolveDesignStandardCode,
   resolveDesignStandardId,
+  mapCalculationStepPoles,
   mapCalculationDirectObjects,
   mapCalculationOverheadWires,
   mapCalculationArms,
+  calculateEvaluatedPositionsM,
+  calculateEvaluatedPositionM,
 } from "../../../calculations/utils/requestPayloadMapper";
 import {
   getMasterDesignStandards,
@@ -218,8 +221,9 @@ export function ReportView() {
             const storedTaper = JSON.parse(
               sessionStorage.getItem(`${projectType}_taperPoleStandard`) || "{}"
             );
-            let poleHeightId = storedTaper?.poleStandardHeightId;
-            if (!poleHeightId) {
+            const isStandard = storedCond?.poleType === "standard";
+            let poleHeightId = isStandard ? storedTaper?.poleStandardHeightId : null;
+            if (isStandard && !poleHeightId) {
               try {
                 const poleStandards = await getPoleStandardData();
                 const stdCode = storedTaper?.poleType;
@@ -240,7 +244,7 @@ export function ReportView() {
               }
             }
 
-            if (poleHeightId) {
+            if (!isStandard || poleHeightId) {
               const std = String(storedCond?.designStandard || storedCond?.standard || "").toLowerCase();
               const isOldJil =
                 (std.includes("jil") ||
@@ -263,10 +267,21 @@ export function ReportView() {
                 return;
               }
 
+              const storedPoleConfig = JSON.parse(
+                sessionStorage.getItem(`${projectType}_poleConfig`) || "{}"
+              );
+              const lowestHeight =
+                storedPoleConfig?.lowestHeight !== undefined && storedPoleConfig?.lowestHeight !== ""
+                  ? storedPoleConfig.lowestHeight
+                  : "0";
+
               const groundPosition =
-                storedTaper?.installationPole === "embedment" || storedCond?.groundPosition === "embedment"
+                isStandard && (storedTaper?.installationPole === "embedment" || storedCond?.groundPosition === "embedment")
                   ? "embedment"
-                  : storedTaper?.groundPosition === "underGL" || storedTaper?.groundPosition === "under_gl"
+                  : (isStandard &&
+                      (storedTaper?.groundPosition === "underGL" ||
+                        storedTaper?.groundPosition === "under_gl")) ||
+                      Number(lowestHeight) < 0
                     ? "under_gl"
                     : "on_gl";
 
@@ -281,7 +296,29 @@ export function ReportView() {
               const rawArmsList = JSON.parse(
                 sessionStorage.getItem(`${projectType}_arms`) || "[]"
               );
+              const rawPolesList = JSON.parse(
+                sessionStorage.getItem(`${projectType}_poles`) || "[]"
+              );
               const materialsList = await getMasterMaterials();
+              const calcStepPoles = mapCalculationStepPoles(rawPolesList, materialsList);
+
+              const poleStandardType = isStandard
+                ? (storedTaper?.poleType || storedCond?.taperPoleType || "")
+                : "";
+
+              const evaluatedPositionsM = calculateEvaluatedPositionsM({
+                isStandard,
+                poleStandardType,
+                poles: rawPolesList,
+                lowestHeight,
+              });
+
+              const embedmentLengthMm =
+                isStandard &&
+                (storedTaper?.installationPole === "embedment" || storedCond?.groundPosition === "embedment") &&
+                storedTaper?.embedmentLength
+                  ? Number(storedTaper.embedmentLength)
+                  : null;
 
               const toolPayload = {
                 conditions: {
@@ -297,15 +334,15 @@ export function ReportView() {
                     : null,
                 },
                 input: {
-                  poleStandardHeightId: poleHeightId,
+                  ...(isStandard && poleHeightId ? { poleStandardHeightId: poleHeightId } : {}),
+                  stepPoles: calcStepPoles,
+                  evaluatedPositionsM,
+                  evaluatedPositionM: evaluatedPositionsM,
                   directObjects: calcDirectObjects,
                   overheadWires: mapCalculationOverheadWires(rawOhwList),
                   arms: mapCalculationArms(rawArmsList, materialsList, isOldJil),
                   groundPosition,
-                  embedmentLengthMm:
-                    (storedTaper?.installationPole === "embedment" || storedCond?.groundPosition === "embedment") && storedTaper?.embedmentLength
-                      ? Number(storedTaper.embedmentLength)
-                      : null,
+                  ...(isStandard && embedmentLengthMm !== null ? { embedmentLengthMm } : {}),
                 },
               };
 

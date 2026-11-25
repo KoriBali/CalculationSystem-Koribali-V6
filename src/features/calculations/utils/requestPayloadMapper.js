@@ -731,6 +731,91 @@ export const mapCalculationStepPoles = (rawList, materialsList = null) => {
 };
 
 /**
+ * Helper konversi nilai jarak/tinggi (mm atau meter) ke meter (M).
+ * Jika nilai absolut > 10 (misal 5000, 3405, -300), dikonversi dari mm ke m (dibagi 1000).
+ */
+export const toMeters = (val) => {
+  if (val === null || val === undefined || val === "") return 0;
+  const num = Number(val);
+  if (isNaN(num)) return 0;
+  return Math.abs(num) > 10 ? num / 1000 : num;
+};
+
+/**
+ * Menghitung evaluatedPositionM untuk payload kalkulasi backend:
+ *
+ * 1. Mode Standard:
+ *    - Type IS, LS, TS (Single-step pole):
+ *      evaluatedPositionM selalu [0].
+ *    - Type IA, LA, TA (Multi-step pole):
+ *      Memiliki 2 nilai: tinggi tiang pada pole ke-2 (dalam meter) dan nilai 0 -> [heightPole2M, 0].
+ *
+ * 2. Mode Custom:
+ *    - Jika pole hanya 1:
+ *      Diambil dari nilai lowest height (dalam meter) -> [lowestHeightM].
+ *    - Jika pole lebih dari 1:
+ *      Mengambil tiap nilai height di bawah pole 1 (pole 2, pole 3, dst.) beserta lowest height:
+ *      Contoh 2 pole -> [heightPole2M, lowestHeightM]
+ *      Contoh 3 pole -> [heightPole2M, heightPole3M, lowestHeightM]
+ *
+ * @param {Object} params
+ * @param {boolean} params.isStandard - Status mode standard (true/false)
+ * @param {string} [params.poleStandardType=""] - Kode tipe standard (misal: "IS", "IA", "LS", "LA", "TS", "TA")
+ * @param {Array} [params.poles=[]] - Array step poles dari input front end
+ * @param {number|string} [params.lowestHeight=0] - Nilai lowest height (mm atau m) dari form
+ * @returns {number[]} Array posisi evaluasi dalam satuan meter (M)
+ */
+export const calculateEvaluatedPositionsM = ({
+  isStandard,
+  poleStandardType = "",
+  poles = [],
+  lowestHeight = 0,
+}) => {
+  const lowestHeightM = toMeters(lowestHeight);
+
+  if (isStandard) {
+    const typeCode = String(poleStandardType || "").toUpperCase().trim();
+    const isSingleStep =
+      typeCode === "IS" || typeCode === "LS" || typeCode === "TS";
+    const isMultiStep =
+      typeCode === "IA" || typeCode === "LA" || typeCode === "TA";
+
+    // Standard Type IS, LS, TS: selalu 0
+    if (isSingleStep) {
+      return [0];
+    }
+
+    // Standard Type IA, LA, TA: tinggi pole ke-2 dan nilai 0
+    if (isMultiStep) {
+      const pole2HeightM =
+        poles.length > 1 ? toMeters(poles[1]?.zHeight ?? poles[1]?.height) : 0;
+      return [pole2HeightM, 0];
+    }
+
+    // Fallback standard umum: jika multi-pole sertakan [pole2, 0], jika single pole [0]
+    if (poles.length > 1) {
+      const pole2HeightM = toMeters(poles[1]?.zHeight ?? poles[1]?.height);
+      return [pole2HeightM, 0];
+    }
+    return [0];
+  }
+
+  // Mode Custom:
+  // Jika tiang hanya 1 pole: ambil dari nilai lowest height
+  if (!poles || poles.length <= 1) {
+    return [lowestHeightM];
+  }
+
+  // Jika tiang lebih dari 1 pole: ambil tiap nilai height di bawah pole 1 (pole 2, pole 3, ...) dan lowest height
+  const positions = poles.slice(1).map((p) => toMeters(p?.zHeight ?? p?.height));
+  positions.push(lowestHeightM);
+  return positions;
+};
+
+// Alias export for backwards compatibility
+export const calculateEvaluatedPositionM = calculateEvaluatedPositionsM;
+
+/**
  * Maps direct objects from frontend state to backend DirectObjectInput schema:
  * - name: string [1, 255]
  * - objectKind: "omni" | "directional"

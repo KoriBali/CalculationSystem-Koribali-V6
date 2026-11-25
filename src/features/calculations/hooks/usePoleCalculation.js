@@ -392,9 +392,15 @@ export function usePoleCalculation({
         validation.armsErrors &&
         Object.keys(validation.armsErrors).length > 0
       ) {
-        if (expandDo) expandDo(true);
         expandAndScroll(expandArm, () =>
           scrollToFirstNestedError(validation.armsErrors, "arm-")
+        );
+      } else if (
+        validation.aoErrors &&
+        Object.keys(validation.aoErrors).length > 0
+      ) {
+        expandAndScroll(expandArm, () =>
+          scrollToFirstNestedError(validation.aoErrors, "arm-")
         );
       }
 

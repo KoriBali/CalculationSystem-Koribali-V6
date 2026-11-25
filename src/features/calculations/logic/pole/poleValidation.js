@@ -249,24 +249,26 @@ export async function validatePoleForm({
   const isStandard = condition.poleType === "standard";
   const isStraight = poleTypeStandard?.type === "straight";
 
-  // ── 1. Structural Design (custom only) ──
-  if (isCustom) {
-    const schema =
-      typeof PoleConfigSchema === "function"
-        ? PoleConfigSchema(condition)
-        : PoleConfigSchema;
-    const { isValid, errors } = await validateWithYup(
-      schema,
-      poleConfig,
-    );
+  // ── 1. Structural Design (all modes) ──
+  const configSchema =
+    typeof PoleConfigSchema === "function"
+      ? PoleConfigSchema(condition)
+      : PoleConfigSchema;
+  const configToValidate = {
+    ...poleConfig,
+    overdesignFactor: poleConfig?.overdesignFactor || poleConfig?.overDesign,
+  };
+  const { isValid: isConfigValid, errors: configErrors } = await validateWithYup(
+    configSchema,
+    configToValidate,
+  );
 
-    if (!isValid) {
-      return {
-        isValid: false,
-        poleConfigErrors: errors,
-        message: "Please correct the errors in Structural Design fields.",
-      };
-    }
+  if (!isConfigValid) {
+    return {
+      isValid: false,
+      poleConfigErrors: configErrors,
+      message: "Please correct the errors in Structural Design fields.",
+    };
   }
 
   // ── 2. Pole Type Standard (standard only) ──
@@ -316,87 +318,93 @@ export async function validatePoleForm({
     };
   }
 
-  // ── 5. Validate poles (custom only) ──
-  if (isCustom) {
-    // ── 5a. PoleFormSchema — validasi semua poles, kumpulkan semua error ──
-    const allFormErrors = {};
-    let hasFormError = false;
+  // ── 5. Validate poles (all modes) ──
+  // ── 5a. PoleFormSchema — validasi semua poles, kumpulkan semua error ──
+  const allFormErrors = {};
+  let hasFormError = false;
 
-    await Promise.all(
-      (resolved.poles || []).map(async (pole, index) => {
-        const { isValid, errors } = await validateWithYup(PoleFormSchema, pole);
-        if (!isValid) {
-          hasFormError = true;
-          // key berdasarkan id pole, value adalah errors per field
-          allFormErrors[pole.id] = errors;
-        }
-      }),
-    );
-
-    if (hasFormError) {
-      return {
-        isValid: false,
-        polesErrors: allFormErrors,
-        message: "Please correct the errors in Pole Specification fields.",
+  await Promise.all(
+    (resolved.poles || []).map(async (pole, index) => {
+      const poleKey = pole.id || String(index + 1);
+      const poleToValidate = {
+        ...pole,
+        type: pole.type || pole.poleType || "Straight",
+        poleType: pole.poleType || pole.type || "Straight",
       };
-    }
-
-    // ── 5b. PoleStructuralSchema — validasi array poles sekaligus ──
-    const structuralSchema = PoleStructuralSchema(poleConfig);
-    const { isValid: isStructuralValid, errors: structuralErrors } =
-      await validateWithYup(structuralSchema, resolved.poles);
-
-    if (!isStructuralValid) {
-      const groupedErrors = {};
-
-      Object.entries(structuralErrors).forEach(([path, message]) => {
-        const match = path.match(/^\[?(\d+)\]?\.(.+)$/);
-        if (match) {
-          const index = Number(match[1]);
-          const field = match[2];
-          const pole = resolved.poles[index];
-          if (pole) {
-            if (!groupedErrors[pole.id]) groupedErrors[pole.id] = {};
-            // true = field merah, tapi tidak tampilkan teks error di bawah field
-            // pesan error sudah ditampilkan via toast
-            groupedErrors[pole.id][field] = true;
-          }
-        }
-      });
-
-      if (Object.keys(groupedErrors).length === 0) {
-        const firstMessage = Object.values(structuralErrors)[0];
-        console.warn(
-          "[PoleStructural] Unmatched error path:",
-          structuralErrors,
-        );
-        return {
-          isValid: false,
-          polesErrors: {},
-          message:
-            firstMessage ||
-            "Please correct the errors in Pole Specification fields.",
-        };
+      const { isValid, errors } = await validateWithYup(PoleFormSchema, poleToValidate);
+      if (!isValid) {
+        hasFormError = true;
+        // key berdasarkan id pole dan index, value adalah errors per field
+        const poleKey = pole.id || String(index + 1);
+        allFormErrors[poleKey] = errors;
+        if (pole.id) allFormErrors[pole.id] = errors;
+        allFormErrors[String(index + 1)] = errors;
       }
+    }),
+  );
 
-      return {
-        isValid: false,
-        polesErrors: groupedErrors,
-        // Ambil pesan pertama dari structuralErrors untuk toast
-        message: Object.values(structuralErrors)[0],
-      };
-    }
+  if (hasFormError) {
+    return {
+      isValid: false,
+      polesErrors: allFormErrors,
+      message: "Please correct the errors in Pole Specification fields.",
+    };
   }
 
-  // ── 6. Validate Objects (custom direct objects OR standard taper objects) ──
-  const isStandardTaper = isStandard && !isStraight;
-  const objectsToValidate = isStandardTaper
-    ? directObjects || []
-    : resolved.directObjects || [];
-  const shouldValidateDo =
-    isCustom || (isStandardTaper && objectsToValidate.length > 0);
+  // ── 5b. PoleStructuralSchema — validasi array poles sekaligus ──
+  const structuralSchema = PoleStructuralSchema(poleConfig);
+  const { isValid: isStructuralValid, errors: structuralErrors } =
+    await validateWithYup(structuralSchema, resolved.poles);
 
-  if (shouldValidateDo && objectsToValidate.length > 0) {
+  if (!isStructuralValid) {
+    const groupedErrors = {};
+
+    Object.entries(structuralErrors).forEach(([path, message]) => {
+      const match = path.match(/^\[?(\d+)\]?\.(.+)$/);
+      if (match) {
+        const index = Number(match[1]);
+        const field = match[2];
+        const pole = resolved.poles[index];
+        const poleKey = pole ? (pole.id || String(index + 1)) : String(index + 1);
+        if (!groupedErrors[poleKey]) groupedErrors[poleKey] = {};
+        // simpan teks error untuk ditampilkan di field & toast
+        groupedErrors[poleKey][field] = message || true;
+        if (pole?.id) {
+          if (!groupedErrors[pole.id]) groupedErrors[pole.id] = {};
+          groupedErrors[pole.id][field] = message || true;
+        }
+        const idxKey = String(index + 1);
+        if (!groupedErrors[idxKey]) groupedErrors[idxKey] = {};
+        groupedErrors[idxKey][field] = message || true;
+      }
+    });
+
+    if (Object.keys(groupedErrors).length === 0) {
+      const firstMessage = Object.values(structuralErrors)[0];
+      return {
+        isValid: false,
+        polesErrors: {},
+        message:
+          firstMessage ||
+          "Please correct the errors in Pole Specification fields.",
+      };
+    }
+
+    return {
+      isValid: false,
+      polesErrors: groupedErrors,
+      // Ambil pesan pertama dari structuralErrors untuk toast
+      message: Object.values(structuralErrors)[0],
+    };
+  }
+
+  // ── 6. Validate Objects (custom direct objects OR standard direct objects) ──
+  const objectsToValidate =
+    directObjects && directObjects.length > 0
+      ? directObjects
+      : resolved.directObjects || [];
+
+  if (objectsToValidate && objectsToValidate.length > 0) {
     const allDoErrors = {};
     let hasDoError = false;
     const schemaToUse = isCustom
@@ -404,14 +412,17 @@ export async function validatePoleForm({
       : StandardDirectObjectSchema;
 
     await Promise.all(
-      objectsToValidate.map(async (directObject) => {
+      objectsToValidate.map(async (directObject, index) => {
         const { isValid, errors } = await validateWithYup(
           schemaToUse,
           directObject,
         );
         if (!isValid) {
           hasDoError = true;
-          allDoErrors[directObject.idDo] = errors;
+          const doKey = directObject.idDo || directObject.id || String(index + 1);
+          allDoErrors[doKey] = errors;
+          if (directObject.idDo) allDoErrors[directObject.idDo] = errors;
+          allDoErrors[String(index + 1)] = errors;
         }
       }),
     );
@@ -426,20 +437,27 @@ export async function validatePoleForm({
   }
 
   // ── 7. Validate Overhead Wires ──
-  const shouldValidateOhw = isCustom || (isStandard && !isStraight);
-  if (shouldValidateOhw && resolved.overheadWires && resolved.overheadWires.length > 0) {
+  const wiresToValidate =
+    overheadWires && overheadWires.length > 0
+      ? overheadWires
+      : resolved.overheadWires || [];
+
+  if (wiresToValidate && wiresToValidate.length > 0) {
     const allOhwErrors = {};
     let hasOhwError = false;
 
     await Promise.all(
-      (resolved.overheadWires || []).map(async (ohw) => {
+      wiresToValidate.map(async (ohw, index) => {
         const { isValid, errors } = await validateWithYup(
           OverheadWireSchema,
           ohw,
         );
         if (!isValid) {
           hasOhwError = true;
-          allOhwErrors[ohw.idOhw] = errors;
+          const ohwKey = ohw.idOhw || ohw.id || String(index + 1);
+          allOhwErrors[ohwKey] = errors;
+          if (ohw.idOhw) allOhwErrors[ohw.idOhw] = errors;
+          allOhwErrors[String(index + 1)] = errors;
         }
       }),
     );
@@ -453,30 +471,44 @@ export async function validatePoleForm({
     }
   }
 
-  // ── 8. Validate Arms + Arm Objects (custom only) ──
-  if (isCustom) {
+  // ── 8. Validate Arms + Arm Objects (all modes with arms) ──
+  const armsToValidate =
+    arms && arms.length > 0 ? arms : resolved.arms || [];
+
+  if (armsToValidate && armsToValidate.length > 0) {
     const allArmsErrors = {};
     const allAoErrors = {};
     let hasArmError = false;
 
     await Promise.all(
-      (resolved.arms || []).map(async (arm) => {
+      armsToValidate.map(async (arm, armIdx) => {
+        const normalizedArm = {
+          ...arm,
+          zHeight: arm.zHeight ?? arm.height,
+          height: arm.height ?? arm.zHeight,
+        };
         // Validasi arm
-        const { isValid, errors } = await validateWithYup(ArmSchema, arm);
+        const { isValid, errors } = await validateWithYup(ArmSchema, normalizedArm);
         if (!isValid) {
           hasArmError = true;
-          allArmsErrors[arm.idArm] = errors;
+          const armKey = arm.idArm || arm.id || String(armIdx + 1);
+          allArmsErrors[armKey] = errors;
+          if (arm.idArm) allArmsErrors[arm.idArm] = errors;
+          allArmsErrors[String(armIdx + 1)] = errors;
         }
 
         // Validasi semua arm objects dalam arm ini
         await Promise.all(
-          (arm.armObjects || []).map(async (ao) => {
+          (arm.armObjects || []).map(async (ao, aoIdx) => {
             const { isValid: aoValid, errors: aoErrors } =
               await validateWithYup(ArmObjectSchema, ao);
             if (!aoValid) {
               hasArmError = true;
-              allAoErrors[ao.idAo] = aoErrors;
-              allAoErrors[`${arm.idArm}_${ao.idAo}`] = aoErrors;
+              const aoKey = ao.idAo || ao.id || String(aoIdx + 1);
+              allAoErrors[aoKey] = aoErrors;
+              if (ao.idAo) allAoErrors[ao.idAo] = aoErrors;
+              allAoErrors[String(aoIdx + 1)] = aoErrors;
+              allAoErrors[`${arm.idArm || armIdx + 1}_${ao.idAo || aoIdx + 1}`] = aoErrors;
             }
           }),
         );

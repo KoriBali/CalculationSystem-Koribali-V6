@@ -219,6 +219,26 @@ export default function ProjectToolsPage() {
     }
   };
 
+  // Helper pembersih data spesifikasi standar agar tidak terbawa ke mode custom
+  const clearStandardPresetData = () => {
+    try {
+      sessionStorage.removeItem("lighting-project_taperPoleStandard");
+      sessionStorage.removeItem("lighting-project_poleTypeStandard");
+      sessionStorage.removeItem("lighting-project_straightPoleStandard");
+      sessionStorage.removeItem("lighting-project_standardPreset");
+      sessionStorage.removeItem("lighting-project_projectToolsSelection");
+      sessionStorage.removeItem("lighting-project_openingType");
+      sessionStorage.removeItem("lighting-project_boxType");
+      sessionStorage.removeItem("lighting-project_calculatedOp");
+      sessionStorage.removeItem("lighting-project_baseplateType");
+      sessionStorage.removeItem("lighting-project_calculatedBaseplate");
+      sessionStorage.removeItem("lighting-project_foundationType");
+      sessionStorage.removeItem("lighting-project_squareCaisson");
+      sessionStorage.removeItem("lighting-project_roundCaisson");
+      sessionStorage.removeItem("lighting-project_calculatedFoundation");
+    } catch {}
+  };
+
   // Reset semua pilihan
   const handleReset = () => {
     setSelectedStandard("");
@@ -237,6 +257,7 @@ export default function ProjectToolsPage() {
       sessionStorage.removeItem("lighting-project_standardPreset");
       sessionStorage.removeItem("lighting-project_reportSnapshot");
       sessionStorage.removeItem("lighting-project_report");
+      clearStandardPresetData();
     } catch {}
   };
 
@@ -486,6 +507,9 @@ export default function ProjectToolsPage() {
         sessionStorage.setItem(
           "lighting-project_standardPreset",
           JSON.stringify({
+            poleType: selectedStandard,
+            height: selectedHeight,
+            poleStandardHeightId,
             poles,
             directObjects,
             arms: resolvedArms,
@@ -556,7 +580,6 @@ export default function ProjectToolsPage() {
         sessionStorage.removeItem("lighting-project_resultsOhw");
         sessionStorage.removeItem("lighting-project_showResults");
         sessionStorage.removeItem("lighting-project_calculatedInputsFingerprint");
-        sessionStorage.removeItem("lighting-project_standardPreset");
         sessionStorage.removeItem("lighting-project_reportSnapshot");
         sessionStorage.removeItem("lighting-project_report");
       } else {
@@ -622,6 +645,9 @@ export default function ProjectToolsPage() {
         sessionStorage.removeItem("lighting-project_standardPreset");
         sessionStorage.removeItem("lighting-project_reportSnapshot");
         sessionStorage.removeItem("lighting-project_report");
+
+        // Clear all standard preset configurations so custom mode starts 100% fresh / blank
+        clearStandardPresetData();
       }
 
       navigate("/project-tools/structural");

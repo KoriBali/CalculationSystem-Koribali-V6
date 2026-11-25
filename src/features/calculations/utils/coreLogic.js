@@ -12,6 +12,8 @@ import {
   mapCalculationDirectObjects,
   mapCalculationOverheadWires,
   mapCalculationArms,
+  mapCalculationStepPoles,
+  calculateEvaluatedPositionM,
 } from "./requestPayloadMapper";
 
 /**
@@ -381,6 +383,18 @@ export const buildCalculationDraftPayload = (projectType, sessionData) => {
   }
 
   const condition = getParsed("condition");
+  const rawPoles = getParsed("poles") || [];
+  const isStandard = condition?.poleType === "standard";
+  const poleStandardType =
+    taperStandard?.poleType ||
+    condition?.taperPoleType ||
+    straightStandard?.poleType ||
+    "";
+  const lowestHeight =
+    poleConfig?.lowestHeight !== undefined && poleConfig?.lowestHeight !== ""
+      ? poleConfig.lowestHeight
+      : "0";
+
   const std = String(condition?.designStandard || condition?.standard || "").toLowerCase();
   const isOldJil =
     (std.includes("jil") ||
@@ -390,9 +404,17 @@ export const buildCalculationDraftPayload = (projectType, sessionData) => {
       std === "jil") &&
     !std.includes("new");
 
+  const materialsList = getCachedMaterials();
+  const stepPoles = mapCalculationStepPoles(rawPoles, materialsList);
+  const evaluatedPositionM = calculateEvaluatedPositionM({
+    isStandard,
+    poleStandardType,
+    poles: rawPoles,
+    lowestHeight,
+  });
+
   const directObjects = mapCalculationDirectObjects(rawDo, isOldJil);
   const overheadWires = mapCalculationOverheadWires(rawOhw);
-  const materialsList = getCachedMaterials();
   const arms = mapCalculationArms(rawArms, materialsList, isOldJil);
 
   const rawGp =
@@ -400,7 +422,9 @@ export const buildCalculationDraftPayload = (projectType, sessionData) => {
     straightStandard?.groundPosition ||
     poleConfig?.groundPosition;
   const groundPosition =
-    rawGp === "underGL" || rawGp === "under_gl" ? "under_gl" : "on_gl";
+    rawGp === "underGL" || rawGp === "under_gl" || Number(lowestHeight) < 0
+      ? "under_gl"
+      : "on_gl";
 
   const rawEmb =
     taperStandard?.embedmentLength ||
@@ -410,12 +434,15 @@ export const buildCalculationDraftPayload = (projectType, sessionData) => {
     rawEmb != null && rawEmb !== "" ? Number(rawEmb) : null;
 
   return {
-    poleStandardHeightId,
+    ...(isStandard && poleStandardHeightId ? { poleStandardHeightId } : {}),
+    stepPoles,
+    evaluatedPositionsM: evaluatedPositionM,
+    evaluatedPositionM,
     directObjects,
     overheadWires,
     arms,
     groundPosition,
-    embedmentLengthMm,
+    ...(isStandard && embedmentLengthMm != null ? { embedmentLengthMm } : {}),
   };
 };
 
@@ -802,16 +829,15 @@ export const saveWorkingSessionToDraft = async (projectType, draftId, defaultTit
       if (reqId) {
         const calcPayload = buildCalculationDraftPayload(projectType, data);
         const backendPayload = {
-          ...(calcPayload?.poleStandardHeightId
-            ? {
-                poleStandardHeightId: calcPayload.poleStandardHeightId,
-                directObjects: calcPayload.directObjects || [],
-                overheadWires: calcPayload.overheadWires || [],
-                arms: calcPayload.arms || [],
-                groundPosition: calcPayload.groundPosition || "on_gl",
-                embedmentLengthMm: calcPayload.embedmentLengthMm ?? null,
-              }
-            : {}),
+          ...(calcPayload?.poleStandardHeightId ? { poleStandardHeightId: calcPayload.poleStandardHeightId } : {}),
+          stepPoles: calcPayload.stepPoles || [],
+          evaluatedPositionsM: calcPayload.evaluatedPositionsM || calcPayload.evaluatedPositionM || [0],
+          evaluatedPositionM: calcPayload.evaluatedPositionsM || calcPayload.evaluatedPositionM || [0],
+          directObjects: calcPayload.directObjects || [],
+          overheadWires: calcPayload.overheadWires || [],
+          arms: calcPayload.arms || [],
+          groundPosition: calcPayload.groundPosition || "on_gl",
+          embedmentLengthMm: calcPayload.embedmentLengthMm ?? null,
 
           // 1. Full draft state as JSON so Opening, Baseplate, Foundation, Cover, and Report are preserved in DB
           payload: data,
@@ -865,27 +891,28 @@ export const saveWorkingSessionToDraft = async (projectType, draftId, defaultTit
           );
         } catch (strictErr) {
           // If backend rejects extra keys (e.g. Unknown calculation draft keys), fallback to standard CalculationInput payload
-          if (calcPayload?.poleStandardHeightId) {
-            try {
-              const cleanBackendPayload = {
-                poleStandardHeightId: calcPayload.poleStandardHeightId,
-                directObjects: calcPayload.directObjects || [],
-                overheadWires: calcPayload.overheadWires || [],
-                arms: calcPayload.arms || [],
-                groundPosition: calcPayload.groundPosition || "on_gl",
-                embedmentLengthMm: calcPayload.embedmentLengthMm ?? null,
-              };
-              await saveCalculationDraft(reqId, draftId, cleanBackendPayload);
-              draftSavedOnServer = true;
-              console.info(
-                `[saveWorkingSessionToDraft] Synced standard calculation draft to backend for ${draftId}`
-              );
-            } catch (fallbackErr) {
-              console.warn(
-                "[saveWorkingSessionToDraft] Standard calculation draft save failed:",
-                fallbackErr?.response?.data || fallbackErr?.message
-              );
-            }
+          try {
+            const cleanBackendPayload = {
+              ...(calcPayload?.poleStandardHeightId ? { poleStandardHeightId: calcPayload.poleStandardHeightId } : {}),
+              stepPoles: calcPayload?.stepPoles || [],
+              evaluatedPositionsM: calcPayload?.evaluatedPositionsM || calcPayload?.evaluatedPositionM || [0],
+              evaluatedPositionM: calcPayload?.evaluatedPositionsM || calcPayload?.evaluatedPositionM || [0],
+              directObjects: calcPayload?.directObjects || [],
+              overheadWires: calcPayload?.overheadWires || [],
+              arms: calcPayload?.arms || [],
+              groundPosition: calcPayload?.groundPosition || "on_gl",
+              ...(calcPayload?.embedmentLengthMm != null ? { embedmentLengthMm: calcPayload.embedmentLengthMm } : {}),
+            };
+            await saveCalculationDraft(reqId, draftId, cleanBackendPayload);
+            draftSavedOnServer = true;
+            console.info(
+              `[saveWorkingSessionToDraft] Synced standard calculation draft to backend for ${draftId}`
+            );
+          } catch (fallbackErr) {
+            console.warn(
+              "[saveWorkingSessionToDraft] Standard calculation draft save failed:",
+              fallbackErr?.response?.data || fallbackErr?.message
+            );
           }
         }
 

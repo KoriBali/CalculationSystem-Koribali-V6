@@ -22,6 +22,8 @@ import {
   mapCalculationDirectObjects,
   mapCalculationOverheadWires,
   mapCalculationArms,
+  calculateEvaluatedPositionsM,
+  calculateEvaluatedPositionM,
 } from "../../calculations/utils/requestPayloadMapper";
 
 // ─── HOOK ────────────────────────────────────────────────────────────────────
@@ -386,15 +388,18 @@ export function useReport(paramProjectType) {
     };
 
     const taperStandard = read("taperPoleStandard", {}) || {};
-    const poleHeightId =
-      taperStandard?.poleStandardHeightId ||
-      poleConfig?.taperPoleStandard?.poleStandardHeightId ||
-      liveCondition?.taperPoleStandard?.poleStandardHeightId;
+    const isStandard = liveCondition?.poleType === "standard";
+    const poleHeightId = isStandard
+      ? (taperStandard?.poleStandardHeightId ||
+          poleConfig?.taperPoleStandard?.poleStandardHeightId ||
+          liveCondition?.taperPoleStandard?.poleStandardHeightId ||
+          null)
+      : null;
 
     let officialReport = null;
     let runId = null;
 
-    if (reqId && activeDraftId && poleHeightId) {
+    if (reqId && activeDraftId && (isStandard ? Boolean(poleHeightId) : true)) {
       try {
         const std = String(liveCondition?.designStandard || liveCondition?.standard || "").toLowerCase();
         const isOldJil =
@@ -438,12 +443,48 @@ export function useReport(paramProjectType) {
         const materialsList = await getMasterMaterials();
         const calcCaseStepPoles = mapCalculationStepPoles(rawCasePoles, materialsList);
 
+        const poleStandardType =
+          taperStandard?.poleType ||
+          liveCondition?.taperPoleType ||
+          "";
+        const lowestHeight =
+          poleConfig?.lowestHeight !== undefined && poleConfig?.lowestHeight !== ""
+            ? poleConfig.lowestHeight
+            : "0";
+        const evaluatedPositionM = calculateEvaluatedPositionM({
+          isStandard,
+          poleStandardType,
+          poles: rawCasePoles,
+          lowestHeight,
+        });
+
+        const groundPosition =
+          isStandard && taperStandard?.installationPole === "embedment"
+            ? "embedment"
+            : (isStandard &&
+                (taperStandard?.groundPosition === "underGL" ||
+                  taperStandard?.groundPosition === "under_gl")) ||
+                Number(lowestHeight) < 0
+              ? "under_gl"
+              : "on_gl";
+
+        const embedmentLengthMm =
+          isStandard &&
+          taperStandard?.installationPole === "embedment" &&
+          taperStandard?.embedmentLength
+            ? Number(taperStandard.embedmentLength)
+            : null;
+
         const runResult = await createCaseRun(reqId, activeDraftId, {
-          poleStandardHeightId: poleHeightId,
+          ...(isStandard && poleHeightId ? { poleStandardHeightId: poleHeightId } : {}),
           stepPoles: calcCaseStepPoles,
+          evaluatedPositionsM: evaluatedPositionM,
+          evaluatedPositionM,
           directObjects: doList,
           overheadWires: mapCalculationOverheadWires(rawCaseOhw),
           arms: mapCalculationArms(rawCaseArms, materialsList, isOldJil),
+          groundPosition,
+          ...(isStandard && embedmentLengthMm !== null ? { embedmentLengthMm } : {}),
         });
 
         const resolvedRunId = runResult?.run?.id || runResult?.id;
@@ -497,139 +538,155 @@ export function useReport(paramProjectType) {
         return false;
       }
     } else if (isProjectTools) {
-      const isCustomPole = liveCondition?.poleType === "custom";
-
-      if (isCustomPole) {
-        // Mode Custom: tidak membutuhkan standard poleStandardHeightId, report dirender dari snapshot kalkulasi client
-        officialReport = null;
-      } else {
-        // Mode Standard: selesaikan poleStandardHeightId jika belum tersedia di session
-        let resolvedPoleHeightId = poleHeightId;
-        if (!resolvedPoleHeightId) {
-          try {
-            const poleStandards = await getPoleStandardData();
-            const stdCode = taperStandard?.poleType;
-            const entry = poleStandards?.find(
-              (item) => item.name?.toUpperCase().includes(`(${stdCode})`) || item.name === stdCode,
-            );
-            const rawH = Number(taperStandard?.height);
-            const mH = rawH > 100 ? rawH / 1000 : rawH;
-            const targetMm = Math.round(mH * 1000);
-            const matchedH = entry?.poleStandardHeights?.find(
-              (h) => Math.abs(Number(h.height) - targetMm) < 50,
-            );
-            if (matchedH?.id) {
-              resolvedPoleHeightId = matchedH.id;
-            }
-          } catch (err) {
-            console.warn("Could not resolve poleStandardHeightId from master data:", err);
+      // ── Project Tools Mode (Standard maupun Custom) ──
+      let resolvedPoleHeightId = isStandard ? poleHeightId : null;
+      if (isStandard && !resolvedPoleHeightId) {
+        try {
+          const poleStandards = await getPoleStandardData();
+          const stdCode = taperStandard?.poleType;
+          const entry = poleStandards?.find(
+            (item) => item.name?.toUpperCase().includes(`(${stdCode})`) || item.name === stdCode,
+          );
+          const rawH = Number(taperStandard?.height);
+          const mH = rawH > 100 ? rawH / 1000 : rawH;
+          const targetMm = Math.round(mH * 1000);
+          const matchedH = entry?.poleStandardHeights?.find(
+            (h) => Math.abs(Number(h.height) - targetMm) < 50,
+          );
+          if (matchedH?.id) {
+            resolvedPoleHeightId = matchedH.id;
           }
+        } catch (err) {
+          console.warn("Could not resolve poleStandardHeightId from master data:", err);
         }
+      }
 
-        if (resolvedPoleHeightId) {
-          try {
-            const std = String(liveCondition?.designStandard || liveCondition?.standard || "").toLowerCase();
-            const isOldJil =
-              (std.includes("jil") ||
-                std.includes("lighting") ||
-                std === "old_lighting_pole" ||
-                std === "old_jil" ||
-                std === "jil") &&
-              !std.includes("new");
+      if (!isStandard || resolvedPoleHeightId) {
+        try {
+          const std = String(liveCondition?.designStandard || liveCondition?.standard || "").toLowerCase();
+          const isOldJil =
+            (std.includes("jil") ||
+              std.includes("lighting") ||
+              std === "old_lighting_pole" ||
+              std === "old_jil" ||
+              std === "jil") &&
+            !std.includes("new");
 
-            // Resolve designStandardId — async fetch from master data, no hardcoded UUIDs
-            let designStandardId = liveCondition?.designStandardId;
-            if (!designStandardId) {
-              const standardsList = await getMasterDesignStandards();
-              designStandardId = resolveDesignStandardId(
-                liveCondition?.designStandard || liveCondition?.standard,
-                standardsList,
-              );
-            }
-
-            if (designStandardId) {
-              const rawDoList =
-                Array.isArray(resultsDo) && resultsDo.length > 0
-                  ? resultsDo
-                  : Array.isArray(poleConfig?.directObjects) && poleConfig.directObjects.length > 0
-                    ? poleConfig.directObjects
-                    : [];
-
-              const calcDirectObjects = mapCalculationDirectObjects(rawDoList, isOldJil);
-
-              const rawOhwList =
-                Array.isArray(resultsOhw) && resultsOhw.length > 0
-                  ? resultsOhw
-                  : Array.isArray(poleConfig?.overheadWires) && poleConfig.overheadWires.length > 0
-                    ? poleConfig.overheadWires
-                    : JSON.parse(sessionStorage.getItem(`${projectType}_overheadWires`) || "[]");
-
-              const rawArmsList =
-                Array.isArray(resultsArm) && resultsArm.length > 0
-                  ? resultsArm
-                  : Array.isArray(poleConfig?.arms) && poleConfig.arms.length > 0
-                    ? poleConfig.arms
-                    : JSON.parse(sessionStorage.getItem(`${projectType}_arms`) || "[]");
-
-              const rawPolesList =
-                Array.isArray(results) && results.length > 0
-                  ? results
-                  : Array.isArray(poleConfig?.poles) && poleConfig.poles.length > 0
-                    ? poleConfig.poles
-                    : JSON.parse(sessionStorage.getItem(`${projectType}_poles`) || "[]");
-
-              const materialsList = await getMasterMaterials();
-              const calcStepPoles = mapCalculationStepPoles(rawPolesList, materialsList);
-              const calcOverheadWires = mapCalculationOverheadWires(rawOhwList);
-              const calcArms = mapCalculationArms(rawArmsList, materialsList, isOldJil);
-
-              const groundPosition =
-                taperStandard?.installationPole === "embedment" || liveCondition?.groundPosition === "embedment"
-                  ? "embedment"
-                  : taperStandard?.groundPosition === "underGL" || taperStandard?.groundPosition === "under_gl"
-                    ? "under_gl"
-                    : "on_gl";
-
-              const toolPayload = {
-                conditions: {
-                  designStandardId,
-                  designStandard:
-                    liveCondition.designStandard || liveCondition.standard || "standard",
-                  windSpeed: Number(liveCondition?.designWindSpeed ?? liveCondition?.windSpeed ?? 60),
-                  airDensity: Number(liveCondition?.designAirDensity ?? liveCondition?.airDensity ?? 1.23),
-                  horizontalAcceleration: liveCondition?.horizontalAcceleration
-                    ? Number(liveCondition.horizontalAcceleration)
-                    : null,
-                  responseRatio: liveCondition?.responseRatio
-                    ? Number(liveCondition.responseRatio)
-                    : null,
-                },
-                input: {
-                  ...(resolvedPoleHeightId ? { poleStandardHeightId: resolvedPoleHeightId } : {}),
-                  stepPoles: calcStepPoles,
-                  directObjects: calcDirectObjects,
-                  overheadWires: calcOverheadWires,
-                  arms: calcArms,
-                  groundPosition,
-                  embedmentLengthMm:
-                    (taperStandard?.installationPole === "embedment" || liveCondition?.groundPosition === "embedment") && taperStandard?.embedmentLength
-                      ? Number(taperStandard.embedmentLength)
-                      : null,
-                },
-              };
-
-              const rep = await previewProjectToolsReport(toolPayload);
-              const resolvedOfficial = rep?.data || rep;
-              if (resolvedOfficial && (resolvedOfficial.sections || resolvedOfficial.template || resolvedOfficial.geometry)) {
-                officialReport = resolvedOfficial;
-              } else if (rep) {
-                officialReport = rep;
-              }
-            }
-          } catch (ptErr) {
-            console.warn("Project tools preview report API notice (using client calculation snapshot):", ptErr);
-            // Non-blocking fallback to client calculation snapshot
+          // Resolve designStandardId — async fetch from master data, no hardcoded UUIDs
+          let designStandardId = liveCondition?.designStandardId;
+          if (!designStandardId) {
+            const standardsList = await getMasterDesignStandards();
+            designStandardId = resolveDesignStandardId(
+              liveCondition?.designStandard || liveCondition?.standard,
+              standardsList,
+            );
           }
+
+          if (designStandardId) {
+            const rawDoList =
+              Array.isArray(resultsDo) && resultsDo.length > 0
+                ? resultsDo
+                : Array.isArray(poleConfig?.directObjects) && poleConfig.directObjects.length > 0
+                  ? poleConfig.directObjects
+                  : [];
+
+            const calcDirectObjects = mapCalculationDirectObjects(rawDoList, isOldJil);
+
+            const rawOhwList =
+              Array.isArray(resultsOhw) && resultsOhw.length > 0
+                ? resultsOhw
+                : Array.isArray(poleConfig?.overheadWires) && poleConfig.overheadWires.length > 0
+                  ? poleConfig.overheadWires
+                  : JSON.parse(sessionStorage.getItem(`${projectType}_overheadWires`) || "[]");
+
+            const rawArmsList =
+              Array.isArray(resultsArm) && resultsArm.length > 0
+                ? resultsArm
+                : Array.isArray(poleConfig?.arms) && poleConfig.arms.length > 0
+                  ? poleConfig.arms
+                  : JSON.parse(sessionStorage.getItem(`${projectType}_arms`) || "[]");
+
+            const rawPolesList =
+              Array.isArray(results) && results.length > 0
+                ? results
+                : Array.isArray(poleConfig?.poles) && poleConfig.poles.length > 0
+                  ? poleConfig.poles
+                  : JSON.parse(sessionStorage.getItem(`${projectType}_poles`) || "[]");
+
+            const materialsList = await getMasterMaterials();
+            const calcStepPoles = mapCalculationStepPoles(rawPolesList, materialsList);
+            const calcOverheadWires = mapCalculationOverheadWires(rawOhwList);
+            const calcArms = mapCalculationArms(rawArmsList, materialsList, isOldJil);
+
+            const poleStandardType = isStandard
+              ? (taperStandard?.poleType || liveCondition?.taperPoleType || "")
+              : "";
+            const lowestHeight =
+              poleConfig?.lowestHeight !== undefined && poleConfig?.lowestHeight !== ""
+                ? poleConfig.lowestHeight
+                : "0";
+            const evaluatedPositionsM = calculateEvaluatedPositionsM({
+              isStandard,
+              poleStandardType,
+              poles: rawPolesList,
+              lowestHeight,
+            });
+
+            const groundPosition =
+              isStandard && (taperStandard?.installationPole === "embedment" || liveCondition?.groundPosition === "embedment")
+                ? "embedment"
+                : (isStandard &&
+                    (taperStandard?.groundPosition === "underGL" ||
+                      taperStandard?.groundPosition === "under_gl")) ||
+                    Number(lowestHeight) < 0
+                  ? "under_gl"
+                  : "on_gl";
+
+            const embedmentLengthMm =
+              isStandard &&
+              (taperStandard?.installationPole === "embedment" || liveCondition?.groundPosition === "embedment") &&
+              taperStandard?.embedmentLength
+                ? Number(taperStandard.embedmentLength)
+                : null;
+
+            const toolPayload = {
+              conditions: {
+                designStandardId,
+                designStandard:
+                  liveCondition.designStandard || liveCondition.standard || "standard",
+                windSpeed: Number(liveCondition?.designWindSpeed ?? liveCondition?.windSpeed ?? 60),
+                airDensity: Number(liveCondition?.designAirDensity ?? liveCondition?.airDensity ?? 1.23),
+                horizontalAcceleration: liveCondition?.horizontalAcceleration
+                  ? Number(liveCondition.horizontalAcceleration)
+                  : null,
+                responseRatio: liveCondition?.responseRatio
+                  ? Number(liveCondition.responseRatio)
+                  : null,
+              },
+              input: {
+                ...(isStandard && resolvedPoleHeightId ? { poleStandardHeightId: resolvedPoleHeightId } : {}),
+                stepPoles: calcStepPoles,
+                evaluatedPositionsM,
+                evaluatedPositionM: evaluatedPositionsM,
+                directObjects: calcDirectObjects,
+                overheadWires: calcOverheadWires,
+                arms: calcArms,
+                groundPosition,
+                ...(isStandard && embedmentLengthMm !== null ? { embedmentLengthMm } : {}),
+              },
+            };
+
+            const rep = await previewProjectToolsReport(toolPayload);
+            const resolvedOfficial = rep?.data || rep;
+            if (resolvedOfficial && (resolvedOfficial.sections || resolvedOfficial.template || resolvedOfficial.geometry)) {
+              officialReport = resolvedOfficial;
+            } else if (rep) {
+              officialReport = rep;
+            }
+          }
+        } catch (ptErr) {
+          console.warn("Project tools preview report API notice (using client calculation snapshot):", ptErr);
+          // Non-blocking fallback to client calculation snapshot
         }
       }
     }
