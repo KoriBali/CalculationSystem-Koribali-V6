@@ -6,72 +6,85 @@
  * Halaman pemilihan konfigurasi tiang standar (Road Lighting Pole Standard)
  * atau custom mode sebelum masuk ke tahapan kalkulasi struktural (/project-tools/structural).
  *
- * ARSITEKTUR & ALUR DATA (DATA RESOLUTION FLOW):
- * 1. Default State:
- *    - Semua input awal berstatus KOSONG / UNSELECTED (mati):
- *      selectedStandard = "", installationType = "", lowestHeightPosition = "",
- *      embedmentLength = "", selectedHeight = "".
- * 2. Toggle / Unselect Behavior:
- *    - Semua tombol pilihan (Pole Standard, Installation, Position, Height) bersifat
- *      toggleable: jika opsi yang sedang aktif diklik kembali, opsi tersebut akan
- *      menjadi unselected (kosong) dan mereset pilihan turunannya.
- * 3. Validasi Pemilihan Bertahap:
- *    - Jika user mencoba mengklik "Select Installation Type" sebelum memilih
- *      "Select Pole Standard Type", sistem menolak aksi tersebut dan memunculkan
- *      pesan kesalahan validasi: "* Select a pole standard type first."
- * 4. Sumber Data Master (BE API vs Fallback Catalog):
- *    - Data master standar tiang diambil via usePoleStandardData() dari endpoint BE
- *      (/api/master/pole-standards).
- *    - Jika backend offline, sistem secara otomatis fallback ke specStandardPole.json
- *      sehingga seluruh spesifikasi (diameter atas/bawah, ketebalan, material STK400,
- *      arm, beban lampu/direct objects, skematik gambar SVG) tetap berfungsi penuh.
- * 5. Logika Transisi Mode (Standard vs Custom):
- *    - CUSTOM MODE: Jika user membiarkan pole standard kosong (""), tombol NEXT aktif.
- *      Ketika diklik, aplikasi menginisialisasi parameter tiang custom default.
- *    - STANDARD MODE: Jika user memilih salah satu tipe standar (IS, IA, LS, LA, TS, TA),
- *      tombol NEXT dinonaktifkan (disabled) sampai seluruh isian wajib terpenuhi
- *      (Installation Type -> Ground Position / Embedment Length -> Pole Height).
+ * TAMPILAN 2-KOLOM:
+ * - Kolom Kiri: List group tipe standar (Type IS, Type IA, Type LS, Type LA, Type TS, Type TA)
+ *   dengan daftar ketinggian masing-masing (IS 8, IS 10, IS 12, IA 4.5, dll).
+ * - Kolom Kanan: Preview diagram tiang beserta overlay dimensi.
+ * - Tanpa opsi embedment & under_gl untuk saat ini (default: baseplate On GL, lowest height = 0 mm).
  * ============================================================================
  */
 
 import { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet";
-import { CheckCircle, Circle, RotateCcw, ArrowRight } from "lucide-react";
+import { CheckCircle, Circle, RotateCcw, ArrowRight, Loader2 } from "lucide-react";
 import { usePoleStandardData } from "../hooks/usePoleStandardData";
+import { getMasterPoleStandardHeightGeometry } from "../services/requestService";
 import STANDARD_POLE_DATA from "../data/specStandardPole.json";
 import {
   DIAGRAM_IMAGE_MAP,
-  EMBED_IMAGE_MAP,
   DIAGRAM_LABEL_LAYOUT,
   getDiagramLabels,
 } from "../components/forms/pole/standard/taperDiagramConstants";
-
-// ─── 1. STATIC MASTER DATA CONFIGURATION ──────────────────────────────────────
-const FALLBACK_POLE_TYPES = [
-  { id: "IS", label: "Type-I (IS)" },
-  { id: "IA", label: "Type-I (IA)" },
-  { id: "LS", label: "Type-L (LS)" },
-  { id: "LA", label: "Type-L (LA)" },
-  { id: "TS", label: "Type-T (TS)" },
-  { id: "TA", label: "Type-T (TA)" },
-];
 
 export default function ProjectToolsPage() {
   const navigate = useNavigate();
 
   // Pengambilan data master standar dari backend API (dengan fallback katalog otomatis)
-  const { poleStandardOptions, heightOptionsByStandard } = usePoleStandardData();
+  const { heightOptionsByStandard } = usePoleStandardData();
 
-  // ─── 2. COMPONENT STATE (DEFAULT ALL UNSELECTED / EMPTY) ────────────────────
-  const [selectedStandard, setSelectedStandard] = useState("");
-  const [installationType, setInstallationType] = useState(""); // 'baseplate' | 'embedment' | ''
-  const [lowestHeightPosition, setLowestHeightPosition] = useState(""); // 'onGL' | 'underGL' | ''
-  const [embedmentLength, setEmbedmentLength] = useState(""); // String angka, tanpa default 1800
-  const [selectedHeight, setSelectedHeight] = useState(""); // Tidak ada auto-select default
-  const [installationError, setInstallationError] = useState(""); // Pesan error jika klik installation sebelum standard
+  // Helper untuk membaca nilai awal pilihan dari sessionStorage (jika ada)
+  const getSavedSelection = () => {
+    try {
+      const saved = sessionStorage.getItem("lighting-project_projectToolsSelection");
+      if (saved) return JSON.parse(saved);
+      const legacy = sessionStorage.getItem("lighting-project_taperPoleStandard");
+      if (legacy) {
+        const parsed = JSON.parse(legacy);
+        return {
+          selectedStandard: parsed.poleType || "",
+          selectedHeight: parsed.height || "",
+          selectedHeightId: parsed.poleStandardHeightId || "",
+        };
+      }
+    } catch {}
+    return {};
+  };
 
-  // Pastikan parameter workflow project tersimpan di sessionStorage saat halaman dimuat
+  const initialSelection = useMemo(() => getSavedSelection(), []);
+
+  // ─── COMPONENT STATE ────────────────────────────────────────────────────────
+  const [selectedStandard, setSelectedStandard] = useState(
+    () => initialSelection.selectedStandard || "",
+  );
+  const [selectedHeight, setSelectedHeight] = useState(
+    () => initialSelection.selectedHeight || "",
+  );
+  const [selectedHeightId, setSelectedHeightId] = useState(
+    () => initialSelection.selectedHeightId || "",
+  );
+  const [isNavigating, setIsNavigating] = useState(false);
+
+  // Simpan setiap perubahan pilihan ke sessionStorage
+  useEffect(() => {
+    try {
+      const payload = {
+        selectedStandard,
+        selectedHeight,
+        selectedHeightId,
+        installationType: "baseplate",
+        lowestHeightPosition: "onGL",
+      };
+      sessionStorage.setItem(
+        "lighting-project_projectToolsSelection",
+        JSON.stringify(payload),
+      );
+    } catch (e) {
+      console.warn("Failed to save project tools selection to sessionStorage:", e);
+    }
+  }, [selectedStandard, selectedHeight, selectedHeightId]);
+
+  // Inisialisasi parameter workflow project saat halaman dimuat
   useEffect(() => {
     sessionStorage.setItem("projectType", "lighting-project");
     sessionStorage.setItem("projectMode", "calculation");
@@ -84,401 +97,540 @@ export default function ProjectToolsPage() {
     );
   }, []);
 
-  // Opsi tipe tiang standar (mengutamakan opsi dari backend jika tersedia)
-  const standardTypes = useMemo(() => {
-    return poleStandardOptions && poleStandardOptions.length > 0
-      ? poleStandardOptions
-      : FALLBACK_POLE_TYPES;
-  }, [poleStandardOptions]);
+  // ─── LIST GROUP MASTER DATA ────────────────────────────────────────────────
+  // Membangun daftar kelompok standar tiang: IS, IA, LS, LA, TS, TA
+  const groupedStandardList = useMemo(() => {
+    const types = ["IS", "IA", "LS", "LA", "TS", "TA"];
+    const tapered =
+      STANDARD_POLE_DATA?.tapered || STANDARD_POLE_DATA?.taper || {};
 
-  // ─── 3. COMPUTED SPECIFICATIONS & HEIGHT OPTIONS ───────────────────────────
-  // Menentukan kunci posisi tanah untuk query katalog data standar
-  const effectiveGroundKey = useMemo(() => {
-    if (installationType === "embedment") return "onGL";
-    if (installationType === "baseplate" && lowestHeightPosition) {
-      return lowestHeightPosition;
-    }
-    return null;
-  }, [installationType, lowestHeightPosition]);
+    return types.map((shortCode) => {
+      const beOptions = heightOptionsByStandard?.[shortCode]?.onGL;
+      const items = [];
 
-  // Daftar ketinggian yang tersedia berdasarkan tipe tiang dan posisi tanah yang dipilih
-  const availableHeights = useMemo(() => {
-    if (!selectedStandard || !effectiveGroundKey) return [];
+      if (Array.isArray(beOptions) && beOptions.length > 0) {
+        const seen = new Set();
+        for (const opt of beOptions) {
+          const numM = Number(opt.id);
+          const cleanHeight =
+            numM === 4.5 || numM === 4.6
+              ? "4.5"
+              : numM === 5 || numM === 5.1
+                ? "5"
+                : String(Math.round(numM));
+          const label = `${shortCode} ${cleanHeight}`;
+          if (!seen.has(label)) {
+            seen.add(label);
+            items.push({
+              key: opt.id,
+              heightId: opt.heightId,
+              numM,
+              label,
+              heightMm: Math.round(numM * 1000),
+            });
+          }
+        }
+      } else {
+        const group = tapered[shortCode]?.onGL || {};
+        const rawKeys = Object.keys(group).sort((a, b) => Number(a) - Number(b));
+        const seenStd = new Set();
+        const seenLabels = new Set();
 
-    // Prioritaskan daftar ketinggian dari BE jika tersedia
-    const beOptions =
-      heightOptionsByStandard?.[selectedStandard]?.[effectiveGroundKey];
-    if (beOptions && beOptions.length > 0) {
-      const seen = new Set();
-      const deduped = [];
-      for (const opt of beOptions) {
-        const label = opt.displayMeter || `${opt.id} m`;
-        if (!seen.has(label)) {
-          seen.add(label);
-          deduped.push({
-            key: opt.id,
-            heightId: opt.heightId,
-            numM: Number(opt.id),
-            displayLabel: label,
+        for (const key of rawKeys) {
+          const entry = group[key] || {};
+          const stdId = entry.standardId;
+          if (stdId && seenStd.has(stdId)) continue;
+          if (stdId) seenStd.add(stdId);
+
+          const numM = Number(key);
+          const cleanHeight =
+            numM === 4.5 || numM === 4.6
+              ? "4.5"
+              : numM === 5 || numM === 5.1
+                ? "5"
+                : String(Math.round(numM));
+          const label = `${shortCode} ${cleanHeight}`;
+
+          if (seenLabels.has(label)) continue;
+          seenLabels.add(label);
+
+          items.push({
+            key,
+            heightId: stdId || null,
+            numM,
+            label,
+            heightMm: Math.round(numM * 1000),
           });
         }
       }
-      return deduped;
-    }
 
-    // Fallback katalog statis
-    const taper = STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
-    const group = taper[selectedStandard] || {};
-    const entries = group[effectiveGroundKey] || {};
+      return {
+        type: shortCode,
+        title: `Type ${shortCode}`,
+        items,
+      };
+    });
+  }, [heightOptionsByStandard]);
 
-    const rawKeys = Object.keys(entries);
-    const sorted = [...rawKeys].sort((a, b) => Number(a) - Number(b));
-
-    const seenStd = new Set();
-    const seenLabels = new Set();
-    const result = [];
-
-    for (const key of sorted) {
-      const entry = entries[key] || {};
-      const stdId = entry.standardId;
-      if (stdId && seenStd.has(stdId)) continue;
-      if (stdId) seenStd.add(stdId);
-
-      const numM = Number(key);
-      const isUnderGL =
-        installationType === "baseplate" && lowestHeightPosition === "underGL";
-      const displayLabel = isUnderGL
-        ? `${numM} m`
-        : numM === 4.5 || numM === 4.6
-          ? "4.5 m"
-          : numM === 5 || numM === 5.1
-            ? "5 m"
-            : `${Math.round(numM)} m`;
-
-      if (seenLabels.has(displayLabel)) continue;
-      seenLabels.add(displayLabel);
-
-      result.push({
-        key,
-        heightId: stdId || null,
-        numM,
-        displayLabel,
-      });
-    }
-
-    return result;
-  }, [
-    selectedStandard,
-    effectiveGroundKey,
-    installationType,
-    lowestHeightPosition,
-    heightOptionsByStandard,
-  ]);
-
-  // Menjaga agar selectedHeight hanya dibersihkan jika tidak lagi valid
-  // (TIDAK melakukan auto-select; user wajib memilih sendiri)
-  useEffect(() => {
-    if (selectedHeight) {
-      const exists = availableHeights.some((h) => h.key === selectedHeight);
-      if (!exists) {
-        setSelectedHeight("");
-      }
-    }
-  }, [availableHeights, selectedHeight]);
-
-  // ─── 4. DIAGRAM IMAGE & SCHEMATIC OVERLAY RESOLUTION ─────────────────────────
-  // Gambar diagram SVG berdasarkan tipe tiang dan mode instalasi
+  // ─── DIAGRAM PREVIEW RESOLUTION ────────────────────────────────────────────
+  // Gambar diagram SVG standar tiang (On GL)
   const currentImage = useMemo(() => {
-    if (!selectedStandard || !installationType) return null;
-    if (installationType === "embedment") {
-      return EMBED_IMAGE_MAP[selectedStandard] || null;
-    }
-    if (installationType === "baseplate" && lowestHeightPosition) {
-      return (
-        DIAGRAM_IMAGE_MAP[selectedStandard]?.[lowestHeightPosition] || null
-      );
-    }
-    return null;
-  }, [selectedStandard, installationType, lowestHeightPosition]);
+    if (!selectedStandard) return null;
+    return DIAGRAM_IMAGE_MAP[selectedStandard]?.onGL || null;
+  }, [selectedStandard]);
 
-  // Posisi ground untuk perhitungan tata letak dimensi diagram
-  const effectiveGroundPositionForDiagram =
-    installationType === "embedment" ? "embedment" : lowestHeightPosition;
-
-  // Label dimensi angka dan spesifikasi teknis tiang pada diagram
+  // Label dimensi angka pada diagram tiang
   const diagramLabels = useMemo(() => {
-    if (
-      !selectedStandard ||
-      !effectiveGroundPositionForDiagram ||
-      !selectedHeight
-    ) {
-      return null;
-    }
-    return getDiagramLabels(
-      selectedStandard,
-      effectiveGroundPositionForDiagram,
-      selectedHeight,
-      null,
-    );
-  }, [selectedStandard, effectiveGroundPositionForDiagram, selectedHeight]);
+    if (!selectedStandard || !selectedHeight) return null;
+    return getDiagramLabels(selectedStandard, "onGL", selectedHeight, null);
+  }, [selectedStandard, selectedHeight]);
 
-  // Konfigurasi viewBox dan koordinat anchor diagram SVG
+  // Tata letak anchor diagram SVG
   const diagramLayout = useMemo(() => {
-    if (!selectedStandard || !effectiveGroundPositionForDiagram) return null;
-    return (
-      DIAGRAM_LABEL_LAYOUT[
-        `${selectedStandard}.${effectiveGroundPositionForDiagram}`
-      ] || null
-    );
-  }, [selectedStandard, effectiveGroundPositionForDiagram]);
+    if (!selectedStandard) return null;
+    return DIAGRAM_LABEL_LAYOUT[`${selectedStandard}.onGL`] || null;
+  }, [selectedStandard]);
 
-  // ─── 5. FORM VALIDATION & NEXT READINESS LOGIC ─────────────────────────────
-  /**
-   * Aturan Validasi Tombol Next:
-   * 1. Jika selectedStandard KOSONG -> User memilih Custom Mode.
-   *    Tombol Next LANGSUNG AKTIF (enabled).
-   * 2. Jika selectedStandard DIPILIH -> User memilih Standard Mode.
-   *    Tombol Next DINONAKTIFKAN (disabled) sampai seluruh isian lengkap:
-   *    - installationType harus dipilih ('baseplate' atau 'embedment')
-   *    - jika baseplate -> lowestHeightPosition harus dipilih ('onGL' atau 'underGL')
-   *    - jika embedment -> embedmentLength harus diisi angka > 0
-   *    - selectedHeight harus dipilih (misal: 8m, 10m, atau 12m)
-   */
-  const isFormComplete = useMemo(() => {
-    // Mode Custom: diizinkan langsung next tanpa spesifikasi standar
-    if (!selectedStandard) {
-      return true;
-    }
+  // ─── EVENT HANDLERS ────────────────────────────────────────────────────────
+  // Pemilihan item tiang standar: mengklik item yang aktif akan unselect (toggle off)
+  const handleSelectItem = (shortCode, heightKey, heightId) => {
+    try {
+      sessionStorage.removeItem("lighting-project_isCalculatedPole");
+      sessionStorage.removeItem("lighting-project_results");
+      sessionStorage.removeItem("lighting-project_displayResult");
+      sessionStorage.removeItem("lighting-project_resultsDo");
+      sessionStorage.removeItem("lighting-project_resultsArm");
+      sessionStorage.removeItem("lighting-project_resultsOhw");
+      sessionStorage.removeItem("lighting-project_showResults");
+      sessionStorage.removeItem("lighting-project_calculatedInputsFingerprint");
+      sessionStorage.removeItem("lighting-project_standardPreset");
+      sessionStorage.removeItem("lighting-project_reportSnapshot");
+      sessionStorage.removeItem("lighting-project_report");
+    } catch {}
 
-    // Mode Standard: seluruh field wajib diisi lengkap
-    if (!installationType) return false;
-
-    if (installationType === "baseplate") {
-      if (!lowestHeightPosition) return false;
-    } else if (installationType === "embedment") {
-      if (!embedmentLength || Number(embedmentLength) <= 0) return false;
-    }
-
-    if (!selectedHeight) return false;
-
-    return true;
-  }, [
-    selectedStandard,
-    installationType,
-    lowestHeightPosition,
-    embedmentLength,
-    selectedHeight,
-  ]);
-
-  // ─── 6. EVENT HANDLERS (TOGGLE & VALIDATION GUARD) ──────────────────────────
-
-  /**
-   * Pemilihan Tipe Standar Tiang (IS, IA, LS, LA, TS, TA)
-   * Mendukung Unselect: Mengklik item yang sedang aktif akan mereset kembali ke kosong.
-   */
-  const handleSelectStandard = (typeId) => {
-    if (selectedStandard === typeId) {
-      // Toggle off / unselect: reset seluruh state downstream
+    if (selectedStandard === shortCode && selectedHeight === heightKey) {
       setSelectedStandard("");
-      setInstallationType("");
-      setLowestHeightPosition("");
-      setEmbedmentLength("");
       setSelectedHeight("");
-      setInstallationError("");
+      setSelectedHeightId("");
     } else {
-      // Pilih standar baru: bersihkan error validasi dan tinggi sebelumnya
-      setSelectedStandard(typeId);
-      setSelectedHeight("");
-      setInstallationError("");
-    }
-  };
-
-  /**
-   * Pemilihan Tipe Instalasi (Baseplate / Embedment)
-   * Guard: Wajib memilih pole standard type terlebih dahulu.
-   * Mendukung Unselect: Mengklik item aktif akan mereset instalasi.
-   */
-  const handleSelectInstallation = (typeId) => {
-    if (!selectedStandard) {
-      setInstallationError("* Select a pole standard type first.");
-      return;
-    }
-    setInstallationError("");
-
-    if (installationType === typeId) {
-      // Toggle off / unselect
-      setInstallationType("");
-      setLowestHeightPosition("");
-      setEmbedmentLength("");
-      setSelectedHeight("");
-    } else {
-      // Pilih instalasi baru
-      setInstallationType(typeId);
-      setLowestHeightPosition("");
-      setEmbedmentLength("");
-      setSelectedHeight("");
-    }
-  };
-
-  /**
-   * Pemilihan Posisi Ketinggian Terbawah untuk Baseplate (On GL / Under GL)
-   * Mendukung Unselect: Mengklik item aktif akan mereset pilihan posisi.
-   */
-  const handleSelectPosition = (posId) => {
-    if (lowestHeightPosition === posId) {
-      // Toggle off / unselect
-      setLowestHeightPosition("");
-      setSelectedHeight("");
-    } else {
-      setLowestHeightPosition(posId);
-      setSelectedHeight("");
-    }
-  };
-
-  /**
-   * Pemilihan Ketinggian Tiang (8m, 10m, 12m, dll)
-   * Mendukung Unselect: Mengklik tinggi aktif akan mereset pilihan tinggi.
-   */
-  const handleSelectHeight = (heightKey) => {
-    if (selectedHeight === heightKey) {
-      // Toggle off / unselect
-      setSelectedHeight("");
-    } else {
+      setSelectedStandard(shortCode);
       setSelectedHeight(heightKey);
+      setSelectedHeightId(heightId || "");
     }
   };
 
-  /**
-   * Reset Menyeluruh: Mengembalikan semua state ke kondisi kosong / mati
-   */
+  // Reset semua pilihan
   const handleReset = () => {
     setSelectedStandard("");
-    setInstallationType("");
-    setLowestHeightPosition("");
-    setEmbedmentLength("");
     setSelectedHeight("");
-    setInstallationError("");
+    setSelectedHeightId("");
+    try {
+      sessionStorage.removeItem("lighting-project_projectToolsSelection");
+      sessionStorage.removeItem("lighting-project_isCalculatedPole");
+      sessionStorage.removeItem("lighting-project_results");
+      sessionStorage.removeItem("lighting-project_displayResult");
+      sessionStorage.removeItem("lighting-project_resultsDo");
+      sessionStorage.removeItem("lighting-project_resultsArm");
+      sessionStorage.removeItem("lighting-project_resultsOhw");
+      sessionStorage.removeItem("lighting-project_showResults");
+      sessionStorage.removeItem("lighting-project_calculatedInputsFingerprint");
+      sessionStorage.removeItem("lighting-project_standardPreset");
+      sessionStorage.removeItem("lighting-project_reportSnapshot");
+      sessionStorage.removeItem("lighting-project_report");
+    } catch {}
   };
 
-  // ─── 7. STEP NAVIGATION & PERSISTENCE ───────────────────────────────────────
-  const handleNext = () => {
-    const isStandard = Boolean(selectedStandard);
+  // ─── NAVIGATION & DATA PERSISTENCE ─────────────────────────────────────────
+  const handleNext = async () => {
+    const isStandard = Boolean(selectedStandard && selectedHeight);
+    setIsNavigating(true);
 
-    if (isStandard) {
-      // ── MODE STANDARD ──
-      // Ambil data spesifikasi murni dari katalog / BE tanpa hardcoded fallback
-      const taper =
-        STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
-      const entry =
-        taper[selectedStandard]?.[effectiveGroundKey]?.[selectedHeight] || {};
+    try {
+      if (isStandard) {
+        // ── MODE STANDARD ──
+        const taper =
+          STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
+        const entry =
+          taper[selectedStandard]?.onGL?.[selectedHeight] || {};
 
-      const matchedHeight = availableHeights.find(
-        (h) => h.key === selectedHeight,
-      );
-      const poleStandardHeightId =
-        matchedHeight?.heightId || entry.standardId || "";
+        const poleStandardHeightId =
+          selectedHeightId || entry.standardId || "";
 
-      // Data murni dari BE / katalog: poles, directObjects, arms
-      const poles = entry.poles || [];
-      const directObjects = entry.directObjects || [];
-      const arms = entry.arms || [];
-      const lowestHeightVal =
-        installationType === "embedment"
-          ? String(embedmentLength || "")
-          : lowestHeightPosition === "underGL"
-            ? "300"
-            : "0";
+        let poles = entry.poles || [];
+        let rawDirectObjects = entry.directObjects || [];
+        let arms = entry.arms || [];
+        let beData = null;
 
-      // Simpan konfigurasi standar murni ke sessionStorage
-      sessionStorage.setItem("projectType", "lighting-project");
-      sessionStorage.setItem("projectMode", "calculation");
-      sessionStorage.setItem(
-        "lighting-project_condition",
-        JSON.stringify({
-          designStandard: "old_lighting_pole",
-          designWindSpeed: "60",
-          designAirDensity: "1.23",
-          poleType: "standard",
-          installationPole: installationType,
-          openingEnabled: true,
-          baseplateEnabled: installationType === "baseplate",
-        }),
-      );
-      sessionStorage.setItem(
-        "lighting-project_taperPoleStandard",
-        JSON.stringify({
-          poleStandardHeightId,
-          poleType: selectedStandard,
-          installationPole: installationType,
-          groundPosition:
-            installationType === "embedment" ? "underGL" : lowestHeightPosition,
-          height: selectedHeight,
-          embedmentLength:
-            installationType === "embedment" ? embedmentLength : "",
-        }),
-      );
-      sessionStorage.setItem("lighting-project_poles", JSON.stringify(poles));
-      sessionStorage.setItem(
-        "lighting-project_directObjects",
-        JSON.stringify(directObjects),
-      );
-      sessionStorage.setItem("lighting-project_arms", JSON.stringify(arms));
-      sessionStorage.setItem(
-        "lighting-project_overheadWires",
-        JSON.stringify([]),
-      );
-      sessionStorage.setItem(
-        "lighting-project_poleConfig",
-        JSON.stringify({
-          lowestHeight: lowestHeightVal,
-          overDesign: "1",
-        }),
-      );
-      sessionStorage.setItem(
-        "lighting-project_poleTypeStandard",
-        JSON.stringify({ type: "taper" }),
-      );
-    } else {
-      // ── MODE CUSTOM ──
-      // Data custom murni kosong; user yang akan mengisinya sendiri dari form di structural
-      sessionStorage.setItem("projectType", "lighting-project");
-      sessionStorage.setItem("projectMode", "calculation");
-      sessionStorage.setItem(
-        "lighting-project_condition",
-        JSON.stringify({
-          designStandard: "old_lighting_pole",
-          designWindSpeed: "60",
-          designAirDensity: "1.23",
-          poleType: "custom",
-          installationPole: installationType || "baseplate",
-          openingEnabled: true,
-          baseplateEnabled: installationType !== "embedment",
-        }),
-      );
-      sessionStorage.setItem("lighting-project_poles", JSON.stringify([]));
-      sessionStorage.setItem(
-        "lighting-project_directObjects",
-        JSON.stringify([]),
-      );
-      sessionStorage.setItem("lighting-project_arms", JSON.stringify([]));
-      sessionStorage.setItem(
-        "lighting-project_overheadWires",
-        JSON.stringify([]),
-      );
-      sessionStorage.setItem(
-        "lighting-project_poleConfig",
-        JSON.stringify({
-          lowestHeight:
-            installationType === "embedment" ? embedmentLength || "0" : "0",
-          overDesign: "1",
-        }),
-      );
+        // Ambil spesifikasi geometri murni dari backend API
+        if (
+          poleStandardHeightId &&
+          String(poleStandardHeightId) !== "null" &&
+          String(poleStandardHeightId) !== "undefined"
+        ) {
+          try {
+            const beGeom = await getMasterPoleStandardHeightGeometry(poleStandardHeightId);
+            beData = beGeom?.data || beGeom;
+
+            if (Array.isArray(beData?.stepPoles) && beData.stepPoles.length > 0) {
+              // Urutkan step poles agar Pole-1 selalu di Step Pole 1, Pole-2 di Step Pole 2, Pole-3 di Step Pole 3
+              const sortedStepPoles = [...beData.stepPoles].sort((a, b) => {
+                const getNum = (name) => {
+                  const m = String(name || "").match(/\d+/);
+                  return m ? Number(m[0]) : 0;
+                };
+                const numA = getNum(a.name);
+                const numB = getNum(b.name);
+                if (numA && numB) return numA - numB;
+                return Number(b.topElevationM ?? 0) - Number(a.topElevationM ?? 0);
+              });
+
+              poles = sortedStepPoles.map((sp, idx) => {
+                const elevM = Number(sp.topElevationM ?? sp.elevationM ?? 0);
+                const heightMm = Math.round(elevM * 1000);
+
+                const poleTypeStr = sp.poleType
+                  ? sp.poleType.toLowerCase() === "straight"
+                    ? "Straight"
+                    : "Taper"
+                  : "Taper";
+
+                const lowerDia = String(
+                  sp.diameterLowerMm ?? sp.lowerDiameter ?? "165",
+                );
+                const upperDia =
+                  poleTypeStr === "Straight"
+                    ? lowerDia
+                    : String(
+                        sp.diameterUpperMm ?? sp.upperDiameter ?? lowerDia,
+                      );
+
+                const lowerThk = String(
+                  sp.thicknessLowerMm ??
+                    sp.thicknessMm ??
+                    sp.lowerThickness ??
+                    "4",
+                );
+                const upperThk =
+                  poleTypeStr === "Straight"
+                    ? lowerThk
+                    : String(
+                        sp.thicknessUpperMm ??
+                          sp.thicknessMm ??
+                          sp.upperThickness ??
+                          lowerThk,
+                      );
+
+                const matName =
+                  typeof sp.material === "object"
+                    ? sp.material?.name || "STK400"
+                    : sp.material || sp.materialName || "STK400";
+
+                return {
+                  id: String(idx + 1),
+                  name: sp.name || `Pole-${idx + 1}`,
+                  material: matName,
+                  poleType: poleTypeStr,
+                  lowerDiameter: lowerDia,
+                  upperDiameter: upperDia,
+                  lowerThickness: lowerThk,
+                  upperThickness: upperThk,
+                  zHeight: String(heightMm),
+                  quantity: String(sp.quantity || "1"),
+                };
+              });
+            }
+
+            if (Array.isArray(beData?.directObjects) && beData.directObjects.length > 0) {
+              rawDirectObjects = beData.directObjects.map((d, idx) => ({
+                idDo: String(idx + 1),
+                name: d.name || "灯具",
+                type: "omni",
+                frontArea: String(d.frontAreaM2 ?? d.frontArea ?? "0.1"),
+                sideArea: "",
+                weight: String(d.massPerUnitKg ?? d.weight ?? "14"),
+                zHeight: String(
+                  d.elevationM
+                    ? Math.round(Number(d.elevationM) * 1000)
+                    : (d.zHeight ?? Number(selectedHeight) * 1000),
+                ),
+                nnC: String(d.baseWindCoefficient ?? d.nnC ?? "1"),
+                quantity: String(d.quantity ?? "1"),
+                fixAngle: "0",
+              }));
+            }
+
+            if (Array.isArray(beData?.arms)) {
+              arms = beData.arms;
+            }
+          } catch (beErr) {
+            console.warn("[ProjectTools] Fallback to local catalog geometry:", beErr?.message);
+          }
+        }
+
+        const directObjects = rawDirectObjects.map((d) => ({
+          ...d,
+          type: "omni",
+          sideArea: "",
+          fixAngle: "0",
+        }));
+
+        const resolvedArms = (arms || []).map((arm, armIdx) => {
+          const matName =
+            typeof arm.material === "object"
+              ? arm.material?.name || "STK400"
+              : arm.material || arm.materialName || "STK400";
+
+          const rawObjects = arm.objects || arm.armObjects || [];
+          const armObjects = rawObjects.map((ao, aoIdx) => ({
+            idAo: String(ao.idAo || aoIdx + 1),
+            name: ao.name || "灯具",
+            type:
+              ao.objectKind === "directional" || ao.type === "directional"
+                ? "directional"
+                : "omni",
+            frontArea: String(ao.frontAreaM2 ?? ao.frontArea ?? "0.1"),
+            sideArea: String(ao.sideAreaM2 ?? ao.sideArea ?? ""),
+            weight: String(ao.massPerUnitKg ?? ao.weight ?? "14"),
+            hDistance: String(
+              ao.horizontalLoadDistanceM != null
+                ? Math.round(Number(ao.horizontalLoadDistanceM) * 1000)
+                : (ao.hDistance ?? (arm.exposedLengthM != null ? Math.round(Number(arm.exposedLengthM) * 1000) : "180"))
+            ),
+            nnC: String(ao.baseWindCoefficient ?? ao.nnC ?? "1"),
+            quantity: String(ao.quantity ?? "1"),
+            fixAngle: String(ao.fixedAngleDeg ?? ao.fixAngle ?? "0"),
+          }));
+
+          const totalLengthMm =
+            arm.totalLengthM != null
+              ? Math.round(Number(arm.totalLengthM) * 1000)
+              : (arm.length ? Math.round(Number(arm.length)) : 180);
+          const expLengthMm =
+            arm.exposedLengthM != null
+              ? Math.round(Number(arm.exposedLengthM) * 1000)
+              : (arm.expLength ? Math.round(Number(arm.expLength)) : totalLengthMm);
+          const heightMm =
+            arm.installationHeightM != null
+              ? Math.round(Number(arm.installationHeightM) * 1000)
+              : (arm.height || arm.zHeight ? Math.round(Number(arm.height || arm.zHeight)) : 4800);
+          const hDistanceMm =
+            armObjects[0]?.hDistance || (arm.hDistance ? String(arm.hDistance) : String(expLengthMm));
+
+          return {
+            idArm: String(arm.idArm || armIdx + 1),
+            id: String(arm.id || armIdx + 1),
+            name: arm.name || `Arm-${armIdx + 1}`,
+            material: matName,
+            armType: arm.armType || arm.type || "Straight",
+            type: arm.type || arm.armType || "Straight",
+            diameter: String(arm.diameterMm ?? arm.diameter ?? "60.5"),
+            thickness: String(arm.thicknessMm ?? arm.thickness ?? "3.8"),
+            length: String(totalLengthMm),
+            expLength: String(expLengthMm),
+            height: String(heightMm),
+            zHeight: String(heightMm),
+            hDistance: String(hDistanceMm),
+            fixAngle: String(arm.fixedAngleDeg ?? arm.fixAngle ?? "0"),
+            nnC: String(arm.baseWindCoefficient ?? arm.nnC ?? "0.7"),
+            quantity: String(arm.quantity ?? "1"),
+            armObjects,
+          };
+        });
+
+        // Default: On GL dengan lowest height = 0 mm
+        const lowestHeightVal = "0";
+
+        sessionStorage.setItem("projectType", "lighting-project");
+        sessionStorage.setItem("projectMode", "calculation");
+        sessionStorage.setItem(
+          "lighting-project_condition",
+          JSON.stringify({
+            designStandard: "old_lighting_pole",
+            designWindSpeed: "60",
+            designAirDensity: "1.23",
+            poleType: "standard",
+            installationPole: "baseplate",
+            openingEnabled: false,
+            baseplateEnabled: true,
+            foundationEnabled: false,
+          }),
+        );
+        sessionStorage.setItem(
+          "lighting-project_taperPoleStandard",
+          JSON.stringify({
+            poleStandardHeightId,
+            poleType: selectedStandard,
+            installationPole: "baseplate",
+            groundPosition: "onGL",
+            height: selectedHeight,
+            embedmentLength: "",
+          }),
+        );
+        sessionStorage.setItem("lighting-project_poles", JSON.stringify(poles));
+        sessionStorage.setItem(
+          "lighting-project_directObjects",
+          JSON.stringify(directObjects),
+        );
+        sessionStorage.setItem("lighting-project_arms", JSON.stringify(resolvedArms));
+        sessionStorage.setItem(
+          "lighting-project_overheadWires",
+          JSON.stringify([]),
+        );
+        sessionStorage.setItem(
+          "lighting-project_poleConfig",
+          JSON.stringify({
+            lowestHeight: lowestHeightVal,
+            overDesign: "1",
+          }),
+        );
+        sessionStorage.setItem(
+          "lighting-project_standardPreset",
+          JSON.stringify({
+            poles,
+            directObjects,
+            arms: resolvedArms,
+            overheadWires: [],
+            poleConfig: {
+              lowestHeight: lowestHeightVal,
+              overDesign: "1",
+            },
+          }),
+        );
+        sessionStorage.setItem(
+          "lighting-project_poleTypeStandard",
+          JSON.stringify({ type: "taper" }),
+        );
+
+        // Data spesifikasi opening & baseplate default
+        sessionStorage.setItem(
+          "lighting-project_openingType",
+          JSON.stringify({ type: "box" }),
+        );
+        sessionStorage.setItem(
+          "lighting-project_boxType",
+          JSON.stringify({
+            boxWidth: "150",
+            opWidth: "130",
+            boxHeight: "6",
+            opSurfaceHeight: "750",
+            opLength: "600",
+            openingDirection: "0",
+          }),
+        );
+        sessionStorage.setItem(
+          "lighting-project_calculatedOp",
+          JSON.stringify({
+            isCalculated: true,
+            openingType: { type: "box" },
+            boxWidth: "150",
+            opWidth: "130",
+            boxHeight: "6",
+            opSurfaceHeight: "750",
+            opLength: "600",
+          }),
+        );
+        sessionStorage.setItem(
+          "lighting-project_baseplateType",
+          JSON.stringify({
+            shape: "square",
+            ribType: "four",
+            sideLength: "350",
+            thickness: "16",
+            anchorBoltDiameter: "24",
+            anchorBoltCount: "4",
+          }),
+        );
+        sessionStorage.setItem(
+          "lighting-project_calculatedBaseplate",
+          JSON.stringify({
+            isCalculated: true,
+          }),
+        );
+
+        // Reset pole calculation state so user MUST recalculate for this selected standard pole
+        sessionStorage.removeItem("lighting-project_isCalculatedPole");
+        sessionStorage.removeItem("lighting-project_results");
+        sessionStorage.removeItem("lighting-project_displayResult");
+        sessionStorage.removeItem("lighting-project_resultsDo");
+        sessionStorage.removeItem("lighting-project_resultsArm");
+        sessionStorage.removeItem("lighting-project_resultsOhw");
+        sessionStorage.removeItem("lighting-project_showResults");
+        sessionStorage.removeItem("lighting-project_calculatedInputsFingerprint");
+        sessionStorage.removeItem("lighting-project_standardPreset");
+        sessionStorage.removeItem("lighting-project_reportSnapshot");
+        sessionStorage.removeItem("lighting-project_report");
+      } else {
+        // ── MODE CUSTOM ──
+        sessionStorage.setItem("projectType", "lighting-project");
+        sessionStorage.setItem("projectMode", "calculation");
+        sessionStorage.setItem(
+          "lighting-project_condition",
+          JSON.stringify({
+            designStandard: "old_lighting_pole",
+            designWindSpeed: "60",
+            designAirDensity: "1.23",
+            poleType: "custom",
+            installationPole: "baseplate",
+            openingEnabled: false,
+            baseplateEnabled: true,
+            foundationEnabled: false,
+          }),
+        );
+        sessionStorage.setItem(
+          "lighting-project_poles",
+          JSON.stringify([
+            {
+              id: "1",
+              name: "Pole-1",
+              material: "STK400",
+              poleType: "Taper",
+              lowerDiameter: "165",
+              upperDiameter: "85",
+              lowerThickness: "4",
+              upperThickness: "4",
+              zHeight: "8000",
+              quantity: "1",
+            },
+          ]),
+        );
+        sessionStorage.setItem(
+          "lighting-project_directObjects",
+          JSON.stringify([]),
+        );
+        sessionStorage.setItem("lighting-project_arms", JSON.stringify([]));
+        sessionStorage.setItem(
+          "lighting-project_overheadWires",
+          JSON.stringify([]),
+        );
+        sessionStorage.setItem(
+          "lighting-project_poleConfig",
+          JSON.stringify({
+            lowestHeight: "0",
+            overDesign: "1",
+          }),
+        );
+
+        // Reset pole calculation state for custom mode
+        sessionStorage.removeItem("lighting-project_isCalculatedPole");
+        sessionStorage.removeItem("lighting-project_results");
+        sessionStorage.removeItem("lighting-project_displayResult");
+        sessionStorage.removeItem("lighting-project_resultsDo");
+        sessionStorage.removeItem("lighting-project_resultsArm");
+        sessionStorage.removeItem("lighting-project_resultsOhw");
+        sessionStorage.removeItem("lighting-project_showResults");
+        sessionStorage.removeItem("lighting-project_calculatedInputsFingerprint");
+        sessionStorage.removeItem("lighting-project_standardPreset");
+        sessionStorage.removeItem("lighting-project_reportSnapshot");
+        sessionStorage.removeItem("lighting-project_report");
+      }
+
+      navigate("/project-tools/structural");
+    } finally {
+      setIsNavigating(false);
     }
-
-    navigate("/project-tools/structural");
   };
 
-  // ─── 8. JSX RENDER VIEW ─────────────────────────────────────────────────────
+  // ─── JSX RENDER VIEW ─────────────────────────────────────────────────────────
   return (
     <div className="w-full">
       <Helmet>
@@ -505,204 +657,97 @@ export default function ProjectToolsPage() {
         </p>
       </div>
 
-      {/* 2-Column Grid Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-6 items-start">
-        {/* ── LEFT PANEL: Pole Standard Selection ── */}
-        <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col gap-5 bg-white h-fit">
-          {/* Section 1: Standard Type */}
-          <div>
-            <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
-              Select Pole Standard Type
-            </label>
-            <div className="flex flex-col gap-2">
-              {standardTypes.map((type) => {
-                const isSelected = selectedStandard === type.id;
-                return (
-                  <button
-                    key={type.id}
-                    type="button"
-                    onClick={() => handleSelectStandard(type.id)}
-                    className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
-                      isSelected
-                        ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
-                        : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
-                    }`}
-                  >
-                    <span>{type.label}</span>
-                    {isSelected ? (
-                      <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+      {/* 2-Column Grid Layout: Equal Height Side-by-Side */}
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] xl:grid-cols-[400px_1fr] gap-6 items-stretch">
+        {/* ── LEFT PANEL: Pole Standard List Group (Scrollable, same height as Preview) ── */}
+        <div className="border border-gray-300 rounded-lg p-4 md:p-5 flex flex-col bg-white shadow-xs h-[680px] lg:h-[760px]">
+          <div className="mb-3.5 pb-2 border-b border-gray-200">
+            <h2 className="text-xs md:text-sm font-semibold text-gray-900">
+              Select Pole Standard
+            </h2>
           </div>
 
-          {/* Section 2: Installation Type */}
-          <div className="pt-2 border-t border-gray-200">
-            <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
-              Select Installation Type
-            </label>
-            <div className="flex flex-col gap-2">
-              {[
-                { id: "baseplate", label: "Baseplate" },
-                { id: "embedment", label: "Embedment" },
-              ].map((item) => {
-                const isSelected = installationType === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleSelectInstallation(item.id)}
-                    className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
-                      isSelected
-                        ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
-                        : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
-                    }`}
-                  >
-                    <span>{item.label}</span>
-                    {isSelected ? (
-                      <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                    ) : (
-                      <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-            {/* Validation Warning Hint */}
-            {installationError && (
-              <p className="text-xs text-red-600 font-medium mt-2">
-                {installationError}
-              </p>
-            )}
+          {/* List Group Container (Inner scrollable list) */}
+          <div className="flex-1 overflow-y-auto pr-1.5 space-y-3.5 min-h-0">
+            {groupedStandardList.map((group) => (
+              <div
+                key={group.type}
+                className="border border-gray-200 rounded-lg p-3 bg-white"
+              >
+                {/* Group Header */}
+                <div className="flex items-center justify-between mb-2.5 px-0.5">
+                  <span className="text-xs font-semibold text-gray-800 tracking-wide">
+                    {group.title}
+                  </span>
+                  <span className="text-[11px] font-normal text-gray-500">
+                    {group.items.length} items
+                  </span>
+                </div>
+
+                {/* Group Items */}
+                <div className="space-y-2">
+                  {group.items.map((item) => {
+                    const isSelected =
+                      selectedStandard === group.type &&
+                      selectedHeight === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() =>
+                          handleSelectItem(group.type, item.key, item.heightId)
+                        }
+                        className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm flex items-center justify-between cursor-pointer transition-colors ${
+                          isSelected
+                            ? "border-blue-500 bg-blue-50/50 text-blue-900 font-medium"
+                            : "border-gray-200 hover:border-gray-400 text-gray-700 bg-white"
+                        }`}
+                      >
+                        <span>{item.label}</span>
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`text-xs ${
+                              isSelected ? "text-blue-700/80" : "text-gray-400"
+                            }`}
+                          >
+                            {item.heightMm} mm
+                          </span>
+                          {isSelected ? (
+                            <CheckCircle className="w-4 h-4 text-blue-500 shrink-0" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-gray-300 shrink-0" />
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
-
-          {/* Section 3: Baseplate -> Lowest Height Position */}
-          {installationType === "baseplate" && (
-            <div className="pt-2 border-t border-gray-200">
-              <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
-                Select Lowest Height Position
-              </label>
-              <div className="flex flex-col gap-2">
-                {[
-                  { id: "onGL", label: "On GL" },
-                  { id: "underGL", label: "Under GL" },
-                ].map((pos) => {
-                  const isSelected = lowestHeightPosition === pos.id;
-                  return (
-                    <button
-                      key={pos.id}
-                      type="button"
-                      onClick={() => handleSelectPosition(pos.id)}
-                      className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm transition-all flex items-center justify-between cursor-pointer ${
-                        isSelected
-                          ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
-                          : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
-                      }`}
-                    >
-                      <span>{pos.label}</span>
-                      {isSelected ? (
-                        <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Section 3: Embedment -> Embedment Length */}
-          {installationType === "embedment" && (
-            <div className="pt-2 border-t border-gray-200">
-              <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2.5">
-                Embedment Length
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  value={embedmentLength}
-                  onChange={(e) => setEmbedmentLength(e.target.value)}
-                  placeholder="e.g. 1800"
-                  className="w-full pl-3 pr-12 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-900 bg-white text-gray-900"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs md:text-sm pointer-events-none">
-                  mm
-                </span>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* ── RIGHT PANEL: Height Selector & Diagram Preview ── */}
-        <div className="border border-gray-300 rounded p-4 md:p-5 flex flex-col bg-white">
-          {/* Height selection row */}
-          <div className="mb-4">
-            <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-2">
-              Select Pole Height
-            </label>
-
-            {!selectedStandard ? (
-              <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
-                Select a pole standard type first.
-              </div>
-            ) : !installationType ? (
-              <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
-                Select an installation type first.
-              </div>
-            ) : installationType === "baseplate" && !lowestHeightPosition ? (
-              <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
-                Select lowest height position first.
-              </div>
-            ) : availableHeights.length === 0 ? (
-              <div className="w-full bg-gray-50 border border-gray-200 rounded px-4 py-3 text-xs md:text-sm text-gray-400 italic">
-                No height options available for this configuration.
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {availableHeights.map((h) => {
-                  const isSelected = selectedHeight === h.key;
-                  return (
-                    <button
-                      key={h.key}
-                      type="button"
-                      onClick={() => handleSelectHeight(h.key)}
-                      className={`px-4 py-2 rounded border text-xs md:text-sm font-medium transition-all cursor-pointer ${
-                        isSelected
-                          ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm font-semibold"
-                          : "border-gray-300 text-gray-700 hover:border-gray-400 bg-white"
-                      }`}
-                    >
-                      {h.displayLabel}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+        {/* ── RIGHT PANEL: Diagram Preview (Matching height) ── */}
+        <div className="border border-gray-300 rounded-lg p-4 md:p-5 flex flex-col bg-white shadow-xs h-[680px] lg:h-[760px]">
+          {/* Header Bar */}
+          <div className="mb-3.5 pb-2 border-b border-gray-200">
+            <h2 className="text-xs md:text-sm font-semibold text-gray-900">
+              Pole Diagram Preview
+            </h2>
           </div>
 
-          {/* Diagram Preview Area */}
-          <div className="border border-dashed border-gray-300 rounded p-4 md:p-6 flex-1 flex items-center justify-center min-h-[520px] md:min-h-[580px] lg:min-h-[640px] xl:min-h-[680px] bg-white relative overflow-hidden">
-            {!selectedStandard || !installationType ? (
-              <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
-                Select a standard to preview the pole.
-              </div>
-            ) : installationType === "baseplate" && !lowestHeightPosition ? (
-              <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
-                Select lowest height position to preview the pole.
+          {/* Diagram Preview Canvas */}
+          <div className="border border-dashed border-gray-300 rounded-lg p-4 md:p-6 flex-1 min-h-0 flex items-center justify-center bg-white relative overflow-hidden">
+            {!selectedStandard ? (
+              <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none py-12">
+                <p>Select a pole standard type from the list to preview the diagram.</p>
               </div>
             ) : !currentImage ? (
-              <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none">
-                Select a standard to preview the pole.
+              <div className="text-center text-gray-400 text-sm md:text-base font-medium select-none py-12">
+                <p>Diagram preview not available for this type.</p>
               </div>
             ) : (
               <div className="relative w-full h-full flex items-center justify-center py-4">
-                {/* Aspect-ratio pinned wrapper matching diagramLayout viewBox */}
                 <div
                   className="relative flex items-center justify-center max-w-full max-h-full h-[500px] md:h-[560px] lg:h-[620px] xl:h-[650px]"
                   style={
@@ -713,10 +758,9 @@ export default function ProjectToolsPage() {
                       : { height: "620px" }
                   }
                 >
-                  {/* Background SVG diagram */}
                   <img
                     src={currentImage}
-                    alt={`${selectedStandard} diagram`}
+                    alt={`Type ${selectedStandard} diagram`}
                     className="w-full h-full object-contain pointer-events-none select-none"
                   />
 
@@ -732,7 +776,6 @@ export default function ProjectToolsPage() {
                       {label.isLeader ? (
                         <>
                           <div className="px-[3px]">{label.lines[0]}</div>
-                          {/* 1px gap where the SVG's leader line runs */}
                           <div className="h-px bg-transparent my-0.5" />
                           <div className="px-[3px] pt-px">{label.lines[1]}</div>
                         </>
@@ -762,15 +805,20 @@ export default function ProjectToolsPage() {
         <button
           type="button"
           onClick={handleNext}
-          disabled={!isFormComplete}
-          className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${
-            isFormComplete
-              ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm"
-              : "bg-gray-200 text-gray-400 cursor-not-allowed border border-gray-300"
-          }`}
+          disabled={isNavigating}
+          className="px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm disabled:opacity-60"
         >
-          <span>Next</span>
-          <ArrowRight className="w-4 h-4" />
+          {isNavigating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Loading...</span>
+            </>
+          ) : (
+            <>
+              <span>Next</span>
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </button>
       </div>
     </div>

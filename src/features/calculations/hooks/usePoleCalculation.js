@@ -126,6 +126,7 @@ export function usePoleCalculation({
   const prevDepsJsonRef = useRef(null);
   useEffect(() => {
     const currentDeps = [
+      condition,
       poleForm.poles,
       directObjectForm.directObjects,
       ohwForm.overheadWires,
@@ -145,6 +146,24 @@ export function usePoleCalculation({
 
     if (prevDepsJsonRef.current === null) {
       prevDepsJsonRef.current = currentJson;
+      const savedFingerprint = sessionStorage.getItem(
+        `${projectType}_calculatedInputsFingerprint`,
+      );
+      if (!savedFingerprint || savedFingerprint !== currentJson) {
+        if (isCalculated || (results && results.length > 0)) {
+          setIsCalculated(false);
+          setIsInputsChanged(true);
+          hasCalculatedRef.current = false;
+          setResults([]);
+          setDisplayResult(null);
+          setShowResults(false);
+          sessionStorage.removeItem(`${projectType}_isCalculatedPole`);
+          sessionStorage.removeItem(`${projectType}_results`);
+          sessionStorage.removeItem(`${projectType}_displayResult`);
+          sessionStorage.removeItem(`${projectType}_calculatedInputsFingerprint`);
+          notifyCalculationProgressChanged();
+        }
+      }
       return;
     }
 
@@ -153,13 +172,12 @@ export function usePoleCalculation({
 
     if (!hasChanged) return;
 
-    if (hasCalculatedRef.current && results && results.length > 0) {
-      setIsInputsChanged(true);
-    }
-
+    setIsInputsChanged(true);
     setIsCalculated(false);
+    hasCalculatedRef.current = false;
     setCalculationError(null);
     sessionStorage.removeItem(`${projectType}_isCalculatedPole`);
+    sessionStorage.removeItem(`${projectType}_calculatedInputsFingerprint`);
 
     // Opening, Baseplate, and Foundation each take one of their calculation
     // parameters from Pole's result — so once Pole's own inputs change
@@ -423,6 +441,23 @@ export function usePoleCalculation({
       setCalculationError(null);
       setCalculationKey((prev) => prev + 1);
       sessionStorage.setItem(`${projectType}_isCalculatedPole`, "true");
+      try {
+        const currentDeps = [
+          condition,
+          poleForm.poles,
+          directObjectForm.directObjects,
+          ohwForm.overheadWires,
+          armForm.arms,
+          poleStandardForm.poleTypeStandard,
+          poleStandardForm.taperPoleStandard,
+          poleStandardForm.straightPoleStandard,
+          poleConfigForm.poleConfig,
+        ];
+        sessionStorage.setItem(
+          `${projectType}_calculatedInputsFingerprint`,
+          JSON.stringify(currentDeps),
+        );
+      } catch {}
       // Let Header re-read sessionStorage now — otherwise the Opening tab
       // stays locked-looking until the user also clicks Next and navigates.
       notifyCalculationProgressChanged();
@@ -513,6 +548,25 @@ export function usePoleCalculation({
     );
   };
 
+  // ── Reset Calculation ──
+  // Clears calculation state, results and marks calculation as needed
+  const resetCalculation = () => {
+    setIsCalculated(false);
+    setIsInputsChanged(true);
+    setResults([]);
+    setDisplayResult(null);
+    setShowResults(false);
+    hasCalculatedRef.current = false;
+    sessionStorage.removeItem(`${projectType}_isCalculatedPole`);
+    sessionStorage.removeItem(`${projectType}_results`);
+    sessionStorage.removeItem(`${projectType}_displayResult`);
+    sessionStorage.removeItem(`${projectType}_calculatedInputsFingerprint`);
+    sessionStorage.removeItem(`${projectType}_isCalculatedOp`);
+    sessionStorage.removeItem(`${projectType}_isCalculatedBp`);
+    sessionStorage.removeItem(`${projectType}_isCalculatedFd`);
+    notifyCalculationProgressChanged();
+  };
+
   return {
     results,
     resultsDo,
@@ -532,6 +586,7 @@ export function usePoleCalculation({
     setToast,
 
     calculate,
+    resetCalculation,
     makeReport,
     finish,
     showToast,

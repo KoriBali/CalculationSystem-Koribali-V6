@@ -5,7 +5,9 @@ const toNumber = (_, val) =>
   val === "" || val === null ? undefined : Number(val);
 
 export const PoleConfigSchema = (condition = {}) => {
-  const isEmbedment = condition?.baseplateEnabled === false;
+  const isEmbedment =
+    condition?.installationPole === "embedment" ||
+    (condition?.baseplateEnabled === false && condition?.installationPole !== "baseplate");
 
   return yup.object({
     // ===== lowestHeight: gabungan underGL & upperGL (baseplate mode) =====

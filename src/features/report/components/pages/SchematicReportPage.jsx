@@ -19,11 +19,20 @@ export function SchematicReportPage({
 }) {
   // Validate and parse SVG
   const sanitizedSvgContent = useMemo(() => {
-    if (!svg) return null;
+    if (!svg || typeof svg !== "string" || !svg.includes("<svg")) return null;
     try {
-      const clean = validateSvg(svg);
+      let clean = svg;
+      try {
+        clean = validateSvg(svg);
+      } catch (vErr) {
+        // Fallback for pre-existing SVGs with DOCTYPE/XML declaration
+        clean = svg.replace(/<\?xml[^>]*\?>/gi, "").replace(/<!DOCTYPE[^>]*>/gi, "").trim();
+      }
       const doc = new DOMParser().parseFromString(clean, "image/svg+xml");
       const root = doc.documentElement;
+      if (doc.querySelector("parsererror") || root.localName !== "svg") {
+        return null;
+      }
 
       // Ensure hover title is in English
       const titleElem = root.querySelector("title");
@@ -130,7 +139,7 @@ export function SchematicReportPage({
 
         {/* Page Content: SVG Schematic */}
         <div className="flex-1 w-full flex items-center justify-center overflow-hidden py-1 schematic-svg-container">
-          {isGenerating && !sanitizedSvgContent ? (
+          {isGenerating && !sanitizedSvgContent && !svg ? (
             <div className="flex flex-col items-center justify-center p-8 text-slate-400">
               <Loader2 className="w-8 h-8 animate-spin text-[#3399cc] mb-2" />
               <p className="text-xs font-medium">Memuat gambar skematik...</p>
@@ -139,6 +148,12 @@ export function SchematicReportPage({
             <div
               className="w-full h-full flex items-center justify-center schematic-svg-inner"
               dangerouslySetInnerHTML={{ __html: sanitizedSvgContent }}
+            />
+          ) : typeof svg === "string" && (svg.startsWith("/") || svg.startsWith("http")) ? (
+            <img
+              src={svg}
+              alt="Pole Schematic"
+              className="max-h-[245mm] max-w-full mx-auto object-contain block"
             />
           ) : null}
         </div>

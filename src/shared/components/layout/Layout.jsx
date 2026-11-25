@@ -103,7 +103,7 @@ export default function Layout() {
   } else if (location.pathname.startsWith("/project-tools/")) {
     const rawStep = location.pathname.replace("/project-tools/", "").split("/")[0];
     const stepLabelMap = {
-      structural: "Structural",
+      structural: "Calculation",
       opening: "Opening",
       baseplate: "Baseplate",
       foundation: "Foundation",
@@ -111,13 +111,21 @@ export default function Layout() {
     };
     const stepName =
       stepLabelMap[rawStep] ||
-      (rawStep ? rawStep.charAt(0).toUpperCase() + rawStep.slice(1) : "Structural");
+      (rawStep ? rawStep.charAt(0).toUpperCase() + rawStep.slice(1) : "Calculation");
 
-    currentTitle = {
-      global: stepName,
-      stage: null,
-      substage: null,
-    };
+    if (rawStep === "report") {
+      currentTitle = {
+        global: "Calculation",
+        stage: "Report",
+        substage: null,
+      };
+    } else {
+      currentTitle = {
+        global: stepName,
+        stage: null,
+        substage: null,
+      };
+    }
   } else if (requestDetailId) {
     const request = getRequest(requestDetailId);
     currentTitle = {
@@ -483,6 +491,10 @@ export default function Layout() {
           onProjectCrumbClick={
             isProjectTools
               ? () => {
+                  if (location.pathname.startsWith("/project-tools")) {
+                    navigate("/project-tools/structural");
+                    return;
+                  }
                   if (projectToolsMatch) {
                     navigate(`/project-tools/${projectToolsMatch[1]}/setup`);
                   } else {

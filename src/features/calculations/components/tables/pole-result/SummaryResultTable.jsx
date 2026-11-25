@@ -1,6 +1,5 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, XCircle, HelpCircle } from "lucide-react";
-import { getRows } from "../../../utils/formatResultTableRows";
 
 // Status pill — shows the actual comparison (value vs limit) INSIDE the
 // badge itself, e.g. "0.9 < 1.0", so the verdict is self-explanatory.
@@ -176,81 +175,82 @@ export function SummaryResultTable({ resultPole, display = null, isOldJil = null
 
   const conditionsToRender = detectedOldJil ? ["Direct Wind"] : WIND_CONDITIONS;
 
+  // Sesuai kebutuhan: cukup satu tabel Structural Evaluation tanpa pengulangan per pole
+  const posList =
+    (Array.isArray(display?.checks) && display.checks.length > 0
+      ? display.checks
+      : null) ||
+    (Array.isArray(display?.positions) && display.positions.length > 0
+      ? display.positions
+      : null) ||
+    (Array.isArray(display?.sections) && display.sections.length > 0
+      ? display.sections
+      : null) ||
+    (display?.governing ? [display.governing] : null) ||
+    (Array.isArray(display) && display.length > 0 ? display : null);
+
+  const rows =
+    posList && posList.length > 0
+      ? posList.map((pos, pIdx) => {
+          const rawRatio =
+            pos.utilizationRatio ??
+            pos.utilization_ratio ??
+            pos.safetyFactor ??
+            pos.safety_factor ??
+            pos.safetyRatio ??
+            pos.stressRatio ??
+            pos.ratio ??
+            pos.value;
+          const sf =
+            rawRatio != null && !Number.isNaN(Number(rawRatio))
+              ? Number(Number(rawRatio).toFixed(3))
+              : resultPole?.[pIdx]?.safetyFactor ??
+                null;
+          const desc =
+            pos.name ||
+            pos.evaluatedPoleName ||
+            pos.poleName ||
+            resultPole?.[pIdx]?.description ||
+            resultPole?.[pIdx]?.name ||
+            `Pole-${pIdx + 1}`;
+          return {
+            description: desc,
+            safetyFactor: sf,
+            limit: pos.limit ?? pos.allowableRatio ?? 1.0,
+          };
+        })
+      : (Array.isArray(resultPole) ? resultPole : []).map((item, pIdx) => {
+          const rawRatio = item?.safetyFactor ?? item?.utilizationRatio;
+          const sf =
+            rawRatio != null && !Number.isNaN(Number(rawRatio))
+              ? Number(Number(rawRatio).toFixed(3))
+              : null;
+          return {
+            description: item?.description || item?.name || `Pole-${pIdx + 1}`,
+            safetyFactor: sf,
+            limit: item?.limit ?? 1.0,
+          };
+        });
+
   return (
-    <div className="mx-6 my-6 space-y-6 hp:mx-2 hp:mt-4 hp:mb-8">
-      {resultPole.map((_, poleIndex) => {
-        // If real backend display.checks, positions, sections, or governing is provided, map directly from it
-        const posList =
-          (Array.isArray(display?.checks) && display.checks.length > 0
-            ? display.checks
-            : null) ||
-          (Array.isArray(display?.positions) && display.positions.length > 0
-            ? display.positions
-            : null) ||
-          (Array.isArray(display?.sections) && display.sections.length > 0
-            ? display.sections
-            : null) ||
-          (display?.governing ? [display.governing] : null) ||
-          (Array.isArray(display) && display.length > 0 ? display : null);
+    <div className="mx-6 my-6 hp:mx-2 hp:mt-4 hp:mb-8">
+      <div className="bg-white rounded border border-gray-300 p-5 hp:p-4">
+        {/* Header Tabel Tunggal */}
+        <div className="flex items-center gap-2">
+          <h3 className="text-gray-900 font-semibold text-sm hp:text-xs leading-tight">
+            Structural Evaluation
+          </h3>
+        </div>
 
-        const rows =
-          posList && posList.length > 0
-            ? posList.map((pos, pIdx) => {
-                const rawRatio =
-                  pos.utilizationRatio ??
-                  pos.utilization_ratio ??
-                  pos.safetyFactor ??
-                  pos.safety_factor ??
-                  pos.safetyRatio ??
-                  pos.stressRatio ??
-                  pos.ratio ??
-                  pos.value;
-                const sf =
-                  rawRatio != null && !Number.isNaN(Number(rawRatio))
-                    ? Number(Number(rawRatio).toFixed(3))
-                    : resultPole[pIdx]?.safetyFactor ??
-                      resultPole[poleIndex]?.safetyFactor ??
-                      null;
-                const desc =
-                  pos.name ||
-                  pos.evaluatedPoleName ||
-                  pos.poleName ||
-                  resultPole[pIdx]?.description ||
-                  resultPole[pIdx]?.name ||
-                  resultPole[poleIndex]?.description ||
-                  resultPole[poleIndex]?.name ||
-                  `Pole-${pIdx + 1}`;
-                return {
-                  description: desc,
-                  safetyFactor: sf,
-                  limit: pos.limit ?? pos.allowableRatio ?? 1.0,
-                };
-              })
-            : getRows(poleIndex, resultPole);
-
-        return (
-          <div
-            key={poleIndex}
-            className="bg-white rounded border border-gray-300 p-5 hp:p-4"
-          >
-            {/* Pole header */}
-            <div className="flex items-center gap-2">
-              <h3 className="text-gray-900 font-semibold text-sm hp:text-xs leading-tight">
-                Pole {poleIndex + 1} Evaluation
-              </h3>
-            </div>
-
-            {conditionsToRender.map((label) => (
-              <ConditionTable
-                key={label}
-                label={label}
-                rows={rows}
-                calculationKey={calculationKey}
-              />
-            ))}
-          </div>
-        );
-      })}
+        {conditionsToRender.map((label) => (
+          <ConditionTable
+            key={label}
+            label={label}
+            rows={rows}
+            calculationKey={calculationKey}
+          />
+        ))}
+      </div>
     </div>
   );
 }

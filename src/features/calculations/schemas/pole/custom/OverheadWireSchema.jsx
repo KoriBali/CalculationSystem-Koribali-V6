@@ -6,13 +6,6 @@ const toNumber = (_, val) =>
 export const OverheadWireSchema = yup.object({
   name: yup.string().required("Required field"),
 
-  weight: yup
-    .number()
-    .transform(toNumber)
-    .typeError("Must be a number")
-    .required("Required field")
-    .min(0, "Must be positive"),
-
   diameter: yup
     .number()
     .transform(toNumber)
@@ -27,36 +20,66 @@ export const OverheadWireSchema = yup.object({
     .required("Required field")
     .min(0, "Must be positive"),
 
-  span: yup
+  tension: yup
     .number()
     .transform(toNumber)
     .typeError("Must be a number")
-    .required("Required field")
-    .min(0, "Must be positive"),
+    .nullable()
+    .optional(),
 
-  saggingRatio: yup
+  weight: yup
     .number()
     .transform(toNumber)
     .typeError("Must be a number")
-    .required("Required field")
-    .min(0, "Must be positive"),
+    .nullable()
+    .optional(),
 
-  nnC: yup
+  angle: yup
     .number()
     .transform(toNumber)
     .typeError("Must be a number")
-    .required("Required field")
-    .min(0, "Must be positive"),
+    .nullable()
+    .optional(),
 
   fixAngle: yup
     .number()
     .transform(toNumber)
     .typeError("Must be a number")
-    .required("Required field"),
+    .nullable()
+    .optional(),
+
+  span: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .nullable()
+    .optional(),
+
+  saggingRatio: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .nullable()
+    .optional(),
+
+  nnC: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .nullable()
+    .optional(),
 
   verticalAngle: yup
     .number()
     .transform(toNumber)
     .typeError("Must be a number")
-    .required("Required field"),
+    .nullable()
+    .optional(),
+
+  quantity: yup
+    .number()
+    .transform(toNumber)
+    .typeError("Must be a number")
+    .nullable()
+    .optional(),
 });

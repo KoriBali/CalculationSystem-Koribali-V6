@@ -692,6 +692,45 @@ export function buildRequestUpdatePayload({
 }
 
 /**
+ * Maps step poles from frontend state to backend StepPoleInput schema:
+ * - name: string [1, 255]
+ * - materialId: string (UUID resolved from master data)
+ * - poleType: "straight" | "taper"
+ * - topElevationM: number (converted from mm if > 10)
+ * - diameterLowerMm: number
+ * - diameterUpperMm: number | null
+ * - thicknessLowerMm: number
+ * - thicknessUpperMm: number | null
+ */
+export const mapCalculationStepPoles = (rawList, materialsList = null) => {
+  if (!Array.isArray(rawList) || rawList.length === 0) return [];
+  return rawList
+    .filter((p) => p && (p.name || p.lowerDiameter != null || p.zHeight != null || p.height != null))
+    .map((p, idx) => {
+      const rawH = Number(p.zHeight ?? p.height ?? p.topElevationM ?? 0);
+      const topElevationM = rawH > 10 ? rawH / 1000 : rawH;
+      const resolvedMatId = resolveMaterialId(p.materialId || p.material, materialsList);
+      const poleTypeStr = String(p.poleType || p.type || "straight").toLowerCase();
+      const isStraight = poleTypeStr === "straight";
+
+      return {
+        name: String(p.name || `Pole-${idx + 1}`).trim(),
+        materialId: resolvedMatId || null,
+        poleType: isStraight ? "straight" : "taper",
+        topElevationM,
+        diameterLowerMm: Number(p.lowerDiameter ?? p.diameterLowerMm ?? 0),
+        diameterUpperMm: isStraight
+          ? null
+          : Number(p.upperDiameter ?? p.diameterUpperMm ?? p.lowerDiameter ?? 0),
+        thicknessLowerMm: Number(p.lowerThickness ?? p.thicknessLowerMm ?? 4),
+        thicknessUpperMm: isStraight
+          ? null
+          : Number(p.upperThickness ?? p.thicknessUpperMm ?? p.lowerThickness ?? 4),
+      };
+    });
+};
+
+/**
  * Maps direct objects from frontend state to backend DirectObjectInput schema:
  * - name: string [1, 255]
  * - objectKind: "omni" | "directional"
@@ -766,7 +805,7 @@ export const mapCalculationDirectObjects = (rawList, isOldJil = false) => {
 export const mapCalculationOverheadWires = (rawList) => {
   if (!Array.isArray(rawList) || rawList.length === 0) return [];
   return rawList
-    .filter((w) => w && (w.name || w.weight != null || w.diameter != null))
+    .filter((w) => w && (w.name || w.weight != null || w.tension != null || w.diameter != null))
     .map((w, idx) => {
       const rawH = Number(w.zHeight ?? w.elevationM ?? 0);
       const elevationM = rawH > 10 ? rawH / 1000 : rawH;
@@ -776,24 +815,26 @@ export const mapCalculationOverheadWires = (rawList) => {
 
       return {
         name: String(w.name || `Overhead Wire ${idx + 1}`).trim(),
-        massPerLengthKgM: Number(w.weight ?? w.massPerLengthKgM ?? 0),
+        massPerLengthKgM: Number(w.massPerLengthKgM ?? w.weight ?? w.tension ?? 0),
         diameterMm: Number(w.diameter ?? w.diameterMm ?? 0),
         elevationM,
         spanLengthM,
         sagRatioPercent: Number(w.saggingRatio ?? w.sagRatioPercent ?? 0),
         baseWindCoefficient: Number(w.nnC ?? w.baseWindCoefficient ?? 1.0),
         fixedAngleDeg:
-          w.fixAngle != null && w.fixAngle !== ""
-            ? Number(w.fixAngle)
-            : w.fixedAngleDeg != null && w.fixedAngleDeg !== ""
-              ? Number(w.fixedAngleDeg)
-              : null,
+          w.angle != null && w.angle !== ""
+            ? Number(w.angle)
+            : w.fixAngle != null && w.fixAngle !== ""
+              ? Number(w.fixAngle)
+              : w.fixedAngleDeg != null && w.fixedAngleDeg !== ""
+                ? Number(w.fixedAngleDeg)
+                : 0,
         verticalAngleDeg:
           w.verticalAngle != null && w.verticalAngle !== ""
             ? Number(w.verticalAngle)
             : w.verticalAngleDeg != null && w.verticalAngleDeg !== ""
               ? Number(w.verticalAngleDeg)
-              : null,
+              : 0,
       };
     });
 };
@@ -850,7 +891,7 @@ export const mapCalculationArms = (rawList, materialsList = null, isOldJil = fal
       const rawExpL = Number(a.expLength ?? a.exposedLengthM ?? 0);
       const exposedLengthM = rawExpL > 10 ? rawExpL / 1000 : rawExpL;
 
-      const rawH = Number(a.zHeight ?? a.installationHeightM ?? 0);
+      const rawH = Number(a.height ?? a.zHeight ?? a.installationHeightM ?? 0);
       const installationHeightM = rawH > 10 ? rawH / 1000 : rawH;
 
       const rawObjects = Array.isArray(a.objects)

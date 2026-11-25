@@ -179,10 +179,25 @@ function deriveHeightOptions(taperEntries) {
       };
     };
 
+    const deduplicateOptions = (heightList) => {
+      const seenLabels = new Set();
+      const uniqueOptions = [];
+      heightList
+        .sort((a, b) => a - b)
+        .forEach((h) => {
+          const opt = toOption(h);
+          if (!seenLabels.has(opt.displayMeter)) {
+            seenLabels.add(opt.displayMeter);
+            uniqueOptions.push(opt);
+          }
+        });
+      return uniqueOptions;
+    };
+
     if (onGL.length > 0 || underGL.length > 0) {
       result[shortCode] = {
-        onGL: onGL.sort((a, b) => a - b).map(toOption),
-        underGL: underGL.sort((a, b) => a - b).map(toOption),
+        onGL: deduplicateOptions(onGL),
+        underGL: deduplicateOptions(underGL),
       };
     }
   });

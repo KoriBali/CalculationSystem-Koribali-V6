@@ -336,7 +336,7 @@ export default function LightingPoleReportContent({
       </div>
 
       {/* ============================= PAGE 2 (SCHEMATIC) ============================= */}
-      {schematicSvg && (
+      {(schematicSvg || isSchematicGenerating) && (
         <SchematicReportPage
           svg={schematicSvg}
           calculationNumber={cover?.calculationNumber ?? ""}

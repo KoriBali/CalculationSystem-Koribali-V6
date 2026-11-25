@@ -15,8 +15,10 @@ import {
   getMasterDesignStandards,
   getMasterMaterials,
 } from "../../calculations/services/masterDataService";
+import { getPoleStandardData } from "../../calculations/services/poleStandardService";
 import {
   resolveDesignStandardId,
+  mapCalculationStepPoles,
   mapCalculationDirectObjects,
   mapCalculationOverheadWires,
   mapCalculationArms,
@@ -25,8 +27,12 @@ import {
 // ─── HOOK ────────────────────────────────────────────────────────────────────
 
 // Handles report generation — validates cover, builds payload, navigates to report page
-export function useReport(projectType) {
+export function useReport(paramProjectType) {
   const navigate = useNavigate();
+  const projectType =
+    paramProjectType ||
+    sessionStorage.getItem("projectType") ||
+    "lighting-project";
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [reportError, setReportError] = useState(null);
 
@@ -184,17 +190,14 @@ export function useReport(projectType) {
     setIsGeneratingReport(true);
     setReportError(null);
 
-    const startTime = Date.now();
-    const ensureMinimumWait = async (minMs = 1200) => {
-      const elapsed = Date.now() - startTime;
-      if (elapsed < minMs) {
-        await new Promise((r) => setTimeout(r, minMs - elapsed));
-      }
-    };
-
     // Pole calculation must have been run
-    if (!isCalculated) {
-      await ensureMinimumWait(400);
+    const hasCalculatedPole =
+      isCalculated !== undefined
+        ? Boolean(isCalculated)
+        : (sessionStorage.getItem(`${projectType}_isCalculatedPole`) === "true" ||
+            (results && results.length > 0));
+
+    if (!hasCalculatedPole && (!results || results.length === 0)) {
       const err = {
         title: "Calculation Not Run Yet",
         message:
@@ -315,7 +318,6 @@ export function useReport(projectType) {
         showToast,
       );
       if (!isResultsValid) {
-        await ensureMinimumWait(400);
         const missingSteps = [];
         if (!results?.length) missingSteps.push("Pole Calculation");
         if (openingEnabled && !hasResult(calculatedOp)) missingSteps.push("Opening Calculation");
@@ -346,6 +348,10 @@ export function useReport(projectType) {
       cover,
       condition: liveCondition,
       poleConfig,
+      poles: read("poles", []),
+      arms: read("arms", []),
+      directObjects: read("directObjects", []),
+      overheadWires: read("overheadWires", []),
       taperPoleStandard: read("taperPoleStandard", null),
       straightPoleStandard: read("straightPoleStandard", null),
       poleTypeStandard: read("poleTypeStandard", null),
@@ -422,9 +428,19 @@ export function useReport(projectType) {
               ? poleConfig.arms
               : JSON.parse(sessionStorage.getItem(`${projectType}_arms`) || "[]");
 
+        const rawCasePoles =
+          Array.isArray(results) && results.length > 0
+            ? results
+            : Array.isArray(poleConfig?.poles) && poleConfig.poles.length > 0
+              ? poleConfig.poles
+              : JSON.parse(sessionStorage.getItem(`${projectType}_poles`) || "[]");
+
         const materialsList = await getMasterMaterials();
+        const calcCaseStepPoles = mapCalculationStepPoles(rawCasePoles, materialsList);
+
         const runResult = await createCaseRun(reqId, activeDraftId, {
           poleStandardHeightId: poleHeightId,
+          stepPoles: calcCaseStepPoles,
           directObjects: doList,
           overheadWires: mapCalculationOverheadWires(rawCaseOhw),
           arms: mapCalculationArms(rawCaseArms, materialsList, isOldJil),
@@ -444,7 +460,6 @@ export function useReport(projectType) {
         }
       } catch (runErr) {
         console.error("Backend calculation run error:", runErr);
-        await ensureMinimumWait(600);
 
         const status =
           runErr?.response?.status ||
@@ -481,152 +496,144 @@ export function useReport(projectType) {
         setIsGeneratingReport(false);
         return false;
       }
-    } else if (isProjectTools && !poleHeightId) {
-      // Project Tools but no pole height selected — cannot generate report
-      setReportError({
-        title: "Pole Configuration Incomplete",
-        message: "Please complete the pole calculation before generating the report.",
-        details: { poleHeightId },
-        status: "INCOMPLETE_CALCULATION",
-      });
-      setIsGeneratingReport(false);
-      return false;
-    } else if (isProjectTools && poleHeightId) {
-      try {
-        const std = String(liveCondition?.designStandard || liveCondition?.standard || "").toLowerCase();
-        const isOldJil =
-          (std.includes("jil") ||
-            std.includes("lighting") ||
-            std === "old_lighting_pole" ||
-            std === "old_jil" ||
-            std === "jil") &&
-          !std.includes("new");
+    } else if (isProjectTools) {
+      const isCustomPole = liveCondition?.poleType === "custom";
 
-        // Resolve designStandardId — async fetch from master data, no hardcoded UUIDs
-        let designStandardId = liveCondition?.designStandardId;
-        if (!designStandardId) {
-          const standardsList = await getMasterDesignStandards();
-          designStandardId = resolveDesignStandardId(
-            liveCondition?.designStandard || liveCondition?.standard,
-            standardsList,
-          );
-        }
-        if (!designStandardId) {
-          throw new Error(
-            "Design standard could not be resolved. Please ensure master data is loaded or re-select the standard from the Initial step.",
-          );
+      if (isCustomPole) {
+        // Mode Custom: tidak membutuhkan standard poleStandardHeightId, report dirender dari snapshot kalkulasi client
+        officialReport = null;
+      } else {
+        // Mode Standard: selesaikan poleStandardHeightId jika belum tersedia di session
+        let resolvedPoleHeightId = poleHeightId;
+        if (!resolvedPoleHeightId) {
+          try {
+            const poleStandards = await getPoleStandardData();
+            const stdCode = taperStandard?.poleType;
+            const entry = poleStandards?.find(
+              (item) => item.name?.toUpperCase().includes(`(${stdCode})`) || item.name === stdCode,
+            );
+            const rawH = Number(taperStandard?.height);
+            const mH = rawH > 100 ? rawH / 1000 : rawH;
+            const targetMm = Math.round(mH * 1000);
+            const matchedH = entry?.poleStandardHeights?.find(
+              (h) => Math.abs(Number(h.height) - targetMm) < 50,
+            );
+            if (matchedH?.id) {
+              resolvedPoleHeightId = matchedH.id;
+            }
+          } catch (err) {
+            console.warn("Could not resolve poleStandardHeightId from master data:", err);
+          }
         }
 
-        const rawDoList =
-          Array.isArray(resultsDo) && resultsDo.length > 0
-            ? resultsDo
-            : Array.isArray(poleConfig?.directObjects) && poleConfig.directObjects.length > 0
-              ? poleConfig.directObjects
-              : [];
+        if (resolvedPoleHeightId) {
+          try {
+            const std = String(liveCondition?.designStandard || liveCondition?.standard || "").toLowerCase();
+            const isOldJil =
+              (std.includes("jil") ||
+                std.includes("lighting") ||
+                std === "old_lighting_pole" ||
+                std === "old_jil" ||
+                std === "jil") &&
+              !std.includes("new");
 
-        const calcDirectObjects = mapCalculationDirectObjects(rawDoList, isOldJil);
+            // Resolve designStandardId — async fetch from master data, no hardcoded UUIDs
+            let designStandardId = liveCondition?.designStandardId;
+            if (!designStandardId) {
+              const standardsList = await getMasterDesignStandards();
+              designStandardId = resolveDesignStandardId(
+                liveCondition?.designStandard || liveCondition?.standard,
+                standardsList,
+              );
+            }
 
-        const rawOhwList =
-          Array.isArray(resultsOhw) && resultsOhw.length > 0
-            ? resultsOhw
-            : Array.isArray(poleConfig?.overheadWires) && poleConfig.overheadWires.length > 0
-              ? poleConfig.overheadWires
-              : JSON.parse(sessionStorage.getItem(`${projectType}_overheadWires`) || "[]");
+            if (designStandardId) {
+              const rawDoList =
+                Array.isArray(resultsDo) && resultsDo.length > 0
+                  ? resultsDo
+                  : Array.isArray(poleConfig?.directObjects) && poleConfig.directObjects.length > 0
+                    ? poleConfig.directObjects
+                    : [];
 
-        const rawArmsList =
-          Array.isArray(resultsArm) && resultsArm.length > 0
-            ? resultsArm
-            : Array.isArray(poleConfig?.arms) && poleConfig.arms.length > 0
-              ? poleConfig.arms
-              : JSON.parse(sessionStorage.getItem(`${projectType}_arms`) || "[]");
+              const calcDirectObjects = mapCalculationDirectObjects(rawDoList, isOldJil);
 
-        const materialsList = await getMasterMaterials();
-        const calcOverheadWires = mapCalculationOverheadWires(rawOhwList);
-        const calcArms = mapCalculationArms(rawArmsList, materialsList, isOldJil);
+              const rawOhwList =
+                Array.isArray(resultsOhw) && resultsOhw.length > 0
+                  ? resultsOhw
+                  : Array.isArray(poleConfig?.overheadWires) && poleConfig.overheadWires.length > 0
+                    ? poleConfig.overheadWires
+                    : JSON.parse(sessionStorage.getItem(`${projectType}_overheadWires`) || "[]");
 
-        const groundPosition =
-          taperStandard?.installationPole === "embedment" || liveCondition?.groundPosition === "embedment"
-            ? "embedment"
-            : taperStandard?.groundPosition === "underGL" || taperStandard?.groundPosition === "under_gl"
-              ? "under_gl"
-              : "on_gl";
+              const rawArmsList =
+                Array.isArray(resultsArm) && resultsArm.length > 0
+                  ? resultsArm
+                  : Array.isArray(poleConfig?.arms) && poleConfig.arms.length > 0
+                    ? poleConfig.arms
+                    : JSON.parse(sessionStorage.getItem(`${projectType}_arms`) || "[]");
 
-        const toolPayload = {
-          conditions: {
-            designStandardId,
-            designStandard:
-              liveCondition.designStandard || liveCondition.standard || "standard",
-            windSpeed: Number(liveCondition?.designWindSpeed ?? liveCondition?.windSpeed ?? 60),
-            airDensity: Number(liveCondition?.designAirDensity ?? liveCondition?.airDensity ?? 1.23),
-            horizontalAcceleration: liveCondition?.horizontalAcceleration
-              ? Number(liveCondition.horizontalAcceleration)
-              : null,
-            responseRatio: liveCondition?.responseRatio
-              ? Number(liveCondition.responseRatio)
-              : null,
-          },
-          input: {
-            poleStandardHeightId: poleHeightId,
-            directObjects: calcDirectObjects,
-            overheadWires: calcOverheadWires,
-            arms: calcArms,
-            groundPosition,
-            embedmentLengthMm:
-              (taperStandard?.installationPole === "embedment" || liveCondition?.groundPosition === "embedment") && taperStandard?.embedmentLength
-                ? Number(taperStandard.embedmentLength)
-                : null,
-          },
-        };
+              const rawPolesList =
+                Array.isArray(results) && results.length > 0
+                  ? results
+                  : Array.isArray(poleConfig?.poles) && poleConfig.poles.length > 0
+                    ? poleConfig.poles
+                    : JSON.parse(sessionStorage.getItem(`${projectType}_poles`) || "[]");
 
-        const rep = await previewProjectToolsReport(toolPayload);
-        const resolvedOfficial = rep?.data || rep;
-        if (resolvedOfficial && (resolvedOfficial.sections || resolvedOfficial.template || resolvedOfficial.geometry)) {
-          officialReport = resolvedOfficial;
-        } else if (rep) {
-          officialReport = rep;
+              const materialsList = await getMasterMaterials();
+              const calcStepPoles = mapCalculationStepPoles(rawPolesList, materialsList);
+              const calcOverheadWires = mapCalculationOverheadWires(rawOhwList);
+              const calcArms = mapCalculationArms(rawArmsList, materialsList, isOldJil);
+
+              const groundPosition =
+                taperStandard?.installationPole === "embedment" || liveCondition?.groundPosition === "embedment"
+                  ? "embedment"
+                  : taperStandard?.groundPosition === "underGL" || taperStandard?.groundPosition === "under_gl"
+                    ? "under_gl"
+                    : "on_gl";
+
+              const toolPayload = {
+                conditions: {
+                  designStandardId,
+                  designStandard:
+                    liveCondition.designStandard || liveCondition.standard || "standard",
+                  windSpeed: Number(liveCondition?.designWindSpeed ?? liveCondition?.windSpeed ?? 60),
+                  airDensity: Number(liveCondition?.designAirDensity ?? liveCondition?.airDensity ?? 1.23),
+                  horizontalAcceleration: liveCondition?.horizontalAcceleration
+                    ? Number(liveCondition.horizontalAcceleration)
+                    : null,
+                  responseRatio: liveCondition?.responseRatio
+                    ? Number(liveCondition.responseRatio)
+                    : null,
+                },
+                input: {
+                  ...(resolvedPoleHeightId ? { poleStandardHeightId: resolvedPoleHeightId } : {}),
+                  stepPoles: calcStepPoles,
+                  directObjects: calcDirectObjects,
+                  overheadWires: calcOverheadWires,
+                  arms: calcArms,
+                  groundPosition,
+                  embedmentLengthMm:
+                    (taperStandard?.installationPole === "embedment" || liveCondition?.groundPosition === "embedment") && taperStandard?.embedmentLength
+                      ? Number(taperStandard.embedmentLength)
+                      : null,
+                },
+              };
+
+              const rep = await previewProjectToolsReport(toolPayload);
+              const resolvedOfficial = rep?.data || rep;
+              if (resolvedOfficial && (resolvedOfficial.sections || resolvedOfficial.template || resolvedOfficial.geometry)) {
+                officialReport = resolvedOfficial;
+              } else if (rep) {
+                officialReport = rep;
+              }
+            }
+          } catch (ptErr) {
+            console.warn("Project tools preview report API notice (using client calculation snapshot):", ptErr);
+            // Non-blocking fallback to client calculation snapshot
+          }
         }
-      } catch (ptErr) {
-        console.error("Project tools preview report error:", ptErr);
-        await ensureMinimumWait(600);
-
-        const status =
-          ptErr?.response?.status ||
-          ptErr?.status ||
-          (ptErr?.response ? "HTTP Error" : "Network Error");
-
-        const respData = ptErr?.response?.data;
-        let detailMessage = "Failed to generate report from the calculation engine server.";
-
-        if (typeof respData?.detail === "string") {
-          detailMessage = respData.detail;
-        } else if (Array.isArray(respData?.detail)) {
-          detailMessage = respData.detail
-            .map(
-              (item) =>
-                `${item?.loc ? item.loc.join(" -> ") : "Parameter"}: ${item?.msg || "invalid"}`,
-            )
-            .join("\n");
-        } else if (respData?.message) {
-          detailMessage = respData.message;
-        } else if (ptErr?.message) {
-          detailMessage = ptErr.message;
-        }
-
-        setReportError({
-          title:
-            status === 422
-              ? "Calculation Validation Failed (HTTP 422)"
-              : "Unable to Generate Report",
-          message: detailMessage,
-          details: respData || ptErr?.message || ptErr,
-          status,
-        });
-        setIsGeneratingReport(false);
-        return false;
       }
     }
 
-    await ensureMinimumWait(600);
     setIsGeneratingReport(false);
 
     const finalReportPayload = {

@@ -33,7 +33,8 @@ const resolveData = ({
 
   if (type === "taper" || type === "tapered") {
     const isEmbedment =
-      !condition.baseplateEnabled && taperPoleStandard.groundPosition === "underGL";
+      taperPoleStandard?.installationPole === "embedment" ||
+      condition?.installationPole === "embedment";
 
     // In Embedment mode the height dropdown shows the plain onGL-style
     // values (the +0.3m embedment allowance is entered separately via
@@ -48,10 +49,17 @@ const resolveData = ({
       : String(Math.round(mHeight * 10) / 10);
 
     const dataTaper = STANDARD_POLE_DATA?.tapered || STANDARD_POLE_DATA?.taper;
+    const rawGroundPos =
+      taperPoleStandard?.groundPosition || condition?.groundPosition || "onGL";
+    const normalizedGroundPos =
+      isEmbedment ||
+      rawGroundPos === "embedment" ||
+      rawGroundPos === "under_gl" ||
+      rawGroundPos === "underGL"
+        ? "underGL"
+        : "onGL";
     const group =
-      dataTaper?.[taperPoleStandard.poleType]?.[
-        taperPoleStandard.groundPosition
-      ] || {};
+      dataTaper?.[taperPoleStandard.poleType]?.[normalizedGroundPos] || {};
     const isTypeWith100 =
       taperPoleStandard.poleType !== "IS" &&
       taperPoleStandard.poleType !== "IA";
@@ -63,9 +71,14 @@ const resolveData = ({
       group[heightKey] ||
       group[nominalKey] ||
       group[String(rawH)] ||
-      group[String(mHeight)];
+      group[String(mHeight)] ||
+      group[String(Math.round(mHeight))] ||
+      group[(mHeight + 0.3).toFixed(1)] ||
+      group[(mHeight + 0.4).toFixed(1)] ||
+      Object.values(group)[0] ||
+      {};
 
-    if (!selectedPole)
+    if (!selectedPole || Object.keys(selectedPole).length === 0)
       return { error: "Standard taper pole data not found.", ...empty };
 
     if (isEmbedment) {
@@ -80,59 +93,48 @@ const resolveData = ({
       : [];
 
     // Merge user-edited arms specification when in standard mode with arms
-    if (arms && arms.length > 0 && selectedPole.arms?.length > 0) {
-      resolvedArms = resolvedArms.map((defArm, idx) => {
-        const userArm =
-          arms[idx] ||
-          arms.find(
-            (a) => a.idArm === String(idx + 1) || a.name === defArm.name,
-          );
-        if (!userArm) return defArm;
-
-        const mergedArm = {
-          ...defArm,
-          idArm: userArm.idArm || String(idx + 1),
-          name: userArm.name ?? defArm.name,
-          material: userArm.material ?? defArm.material,
-          diameter: userArm.diameter ?? defArm.diameter,
-          thickness: userArm.thickness ?? defArm.thickness,
-          length: userArm.length ?? defArm.length,
-          expLength: userArm.expLength ?? defArm.expLength,
-          zHeight: userArm.zHeight ?? defArm.zHeight,
-          hDistance: userArm.hDistance ?? defArm.hDistance,
-          fixAngle: userArm.fixAngle ?? defArm.fixAngle,
-          nnC: userArm.nnC ?? defArm.nnC,
-          quantity: userArm.quantity ?? defArm.quantity,
-        };
-
-        if (Array.isArray(userArm.armObjects) && userArm.armObjects.length > 0) {
-          mergedArm.armObjects = (defArm.armObjects || []).map(
-            (defAo, aoIdx) => {
-              const userAo =
-                userArm.armObjects[aoIdx] ||
-                userArm.armObjects.find((o) => o.idAo === String(aoIdx + 1));
-              if (!userAo) return defAo;
-              return {
-                ...defAo,
-                idAo: userAo.idAo || String(aoIdx + 1),
-                name: userAo.name ?? defAo.name,
-                type: userAo.type ?? defAo.type,
-                frontArea: userAo.frontArea ?? defAo.frontArea,
-                sideArea: userAo.sideArea ?? defAo.sideArea,
-                weight: userAo.weight ?? defAo.weight,
-                zHeight:
-                  userAo.zHeight ?? userAo.hDistance ?? defAo.zHeight,
-                hDistance:
-                  userAo.hDistance ?? userAo.zHeight ?? defAo.hDistance,
-                fixAngle: userAo.fixAngle ?? defAo.fixAngle,
-                nnC: userAo.nnC ?? defAo.nnC,
-                quantity: userAo.quantity ?? defAo.quantity,
-              };
-            },
-          );
-        }
-        return mergedArm;
-      });
+    if (arms && arms.length > 0) {
+      if (selectedPole.arms && selectedPole.arms.length > 0) {
+        resolvedArms = arms.map((userArm, idx) => {
+          const defArm = selectedPole.arms[idx] || selectedPole.arms[0] || {};
+          const mergedArm = {
+            ...defArm,
+            ...userArm,
+            idArm: userArm.idArm || String(idx + 1),
+            name: userArm.name || defArm.name || `Arm-${idx + 1}`,
+            material: userArm.material || defArm.material || "STK400",
+            diameter: userArm.diameter ?? defArm.diameter ?? "60.5",
+            thickness: userArm.thickness ?? defArm.thickness ?? "3.8",
+            length: userArm.length ?? defArm.length ?? "180",
+            expLength: userArm.expLength ?? defArm.expLength ?? userArm.length ?? "180",
+            zHeight: userArm.zHeight ?? userArm.height ?? defArm.zHeight ?? "4800",
+            height: userArm.height ?? userArm.zHeight ?? defArm.height ?? "4800",
+            hDistance: userArm.hDistance ?? defArm.hDistance ?? "180",
+            fixAngle: userArm.fixAngle ?? defArm.fixAngle ?? "0",
+            nnC: userArm.nnC ?? defArm.nnC ?? "0.7",
+            quantity: userArm.quantity ?? defArm.quantity ?? "1",
+            armObjects:
+              Array.isArray(userArm.armObjects) && userArm.armObjects.length > 0
+                ? userArm.armObjects.map((userAo, aoIdx) => ({
+                    idAo: userAo.idAo || String(aoIdx + 1),
+                    name: userAo.name || "灯具",
+                    type: userAo.type || "omni",
+                    frontArea: userAo.frontArea ?? "0.1",
+                    sideArea: userAo.sideArea ?? "",
+                    weight: userAo.weight ?? "14",
+                    zHeight: userAo.zHeight ?? userAo.hDistance ?? "180",
+                    hDistance: userAo.hDistance ?? userAo.zHeight ?? "180",
+                    fixAngle: userAo.fixAngle ?? "0",
+                    nnC: userAo.nnC ?? "1",
+                    quantity: userAo.quantity ?? "1",
+                  }))
+                : defArm.armObjects || [],
+          };
+          return mergedArm;
+        });
+      } else {
+        resolvedArms = JSON.parse(JSON.stringify(arms));
+      }
     }
 
     if (directObjects && directObjects.length > 0) {
@@ -168,13 +170,11 @@ const resolveData = ({
             };
           }
         } else {
-          if (selectedPole.directObjects?.length) {
-            resolvedDirectObjects.push({
-              ...obj,
-              sideArea: obj.sideArea || obj.frontArea || "0.1",
-              fixAngle: obj.fixAngle ?? "0",
-            });
-          }
+          resolvedDirectObjects.push({
+            ...obj,
+            sideArea: obj.sideArea || obj.frontArea || "0.1",
+            fixAngle: obj.fixAngle ?? "0",
+          });
         }
       });
     } else {
@@ -184,7 +184,7 @@ const resolveData = ({
     const resolvedOverheadWires = (overheadWires || []).slice(0, 4);
 
     return {
-      poles: selectedPole.poles || [],
+      poles: (poles && poles.length > 0) ? poles : (selectedPole.poles || []),
       directObjects: resolvedDirectObjects,
       arms: resolvedArms,
       overheadWires: resolvedOverheadWires,

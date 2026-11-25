@@ -15,7 +15,8 @@ export const PoleStructuralSchema = (poleConfig) => {
         const poleNumber = i + 1;
         const current = poles[i];
         const previous = poles[i - 1];
-        const isStraight = current.type === "Straight";
+        const isStraight =
+          (current.type || current.poleType || "").toLowerCase() === "straight";
 
         const lowerDiameter = Number(current.lowerDiameter);
         const upperDiameter = Number(current.upperDiameter);

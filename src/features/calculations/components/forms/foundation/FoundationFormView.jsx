@@ -4,6 +4,7 @@ import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Box } from "lucide-react";
 
 import { HeaderCalculationPage } from "../../layout/HeaderCalculationPage";
+import { ProjectToolsFlowHeader } from "../../layout/ProjectToolsFlowHeader";
 import { FoundationType } from "./FoundationType";
 import { RoundCaissonTypeForm } from "./RoundCaissonTypeForm";
 import { SquareCaissonTypeForm } from "./SquareCaissonTypeForm";
@@ -28,7 +29,9 @@ import { getUser } from "../../../../../utils/auth";
 
 // Main view component for foundation calculation form
 export default function FoundationFormView() {
-  const { type: projectType, draftId } = useParams();
+  const { type: paramType, draftId } = useParams();
+  const projectType =
+    paramType || sessionStorage.getItem("projectType") || "lighting-project";
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [showDbModal, setShowDbModal] = useState(false);
   const [showCoverModal, setShowCoverModal] = useState(false);
@@ -158,9 +161,14 @@ export default function FoundationFormView() {
           />
         </Helmet>
 
-        <div className="flex-1 rounded-t-2xl hp:rounded-t-xl bg-gray-50">
-          {/* PERBAIKAN: Menggunakan HeaderCalculationPage sesuai import */}
-          <HeaderCalculationPage />
+        <div className={isProjectTools ? "w-full" : "flex-1 rounded-t-2xl hp:rounded-t-xl bg-gray-50"}>
+          {isProjectTools ? (
+            <div className="w-full max-w-[1440px] mx-auto pt-0 px-2">
+              <ProjectToolsFlowHeader currentStep="foundation" />
+            </div>
+          ) : (
+            <HeaderCalculationPage />
+          )}
 
           <div className="w-full max-w-[1440px] mx-auto pt-0 pb-24 sm:pb-8 px-2">
             {/* ── Foundation configuration (Foundation Type + Detail) ── */}

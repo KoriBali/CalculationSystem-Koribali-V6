@@ -28,7 +28,10 @@ import {
   useSchematicBridge,
   DEFAULT_SCHEMATIC_URL,
 } from "../../../calculations/hooks/useSchematicBridge";
-import { getStandardPoleSchematicParameters } from "../../../calculations/utils/standardPoleSchematicMapper";
+import {
+  getStandardPoleSchematicParameters,
+  mapInputToSchematicParameters,
+} from "../../../calculations/utils/standardPoleSchematicMapper";
 import { normalizeCover } from "../../utils/reportFormatters";
 import {
   getDraftData,
@@ -54,6 +57,7 @@ import {
   getMasterDesignStandards,
   getMasterMaterials,
 } from "../../../calculations/services/masterDataService";
+
 import STANDARD_POLE_DATA from "../../../calculations/data/specStandardPole.json";
 import {
   getCaseRuns,
@@ -66,6 +70,7 @@ import {
   getCalculationDraft,
   previewProjectToolsReport,
 } from "../../../calculations/services/requestService";
+import { getPoleStandardData } from "../../../calculations/services/poleStandardService";
 import { ReportLoadingModal } from "../modals/ReportLoadingModal";
 import { ReportErrorModal } from "../modals/ReportErrorModal";
 
@@ -141,6 +146,46 @@ export function ReportView() {
               : draftData.reportSnapshot;
         }
       }
+      if (!snap && isProjectTools) {
+        const results = JSON.parse(
+          sessionStorage.getItem(`${projectType}_results`) || "[]"
+        );
+        if (results && results.length > 0) {
+          snap = {
+            results,
+            resultsDo: JSON.parse(
+              sessionStorage.getItem(`${projectType}_resultsDo`) || "[]"
+            ),
+            resultsOhw: JSON.parse(
+              sessionStorage.getItem(`${projectType}_resultsOhw`) || "[]"
+            ),
+            resultsArm: JSON.parse(
+              sessionStorage.getItem(`${projectType}_resultsArm`) || "[]"
+            ),
+            condition: JSON.parse(
+              sessionStorage.getItem(`${projectType}_condition`) || "{}"
+            ),
+            poleConfig: JSON.parse(
+              sessionStorage.getItem(`${projectType}_poleConfig`) || "{}"
+            ),
+            taperPoleStandard: JSON.parse(
+              sessionStorage.getItem(`${projectType}_taperPoleStandard`) || "null"
+            ),
+            cover: JSON.parse(
+              sessionStorage.getItem(`${projectType}_cover`) || "{}"
+            ),
+            calculatedOp: JSON.parse(
+              sessionStorage.getItem(`${projectType}_calculatedOp`) || "{}"
+            ),
+            calculatedBaseplate: JSON.parse(
+              sessionStorage.getItem(`${projectType}_calculatedBaseplate`) || "{}"
+            ),
+            calculatedFoundation: JSON.parse(
+              sessionStorage.getItem(`${projectType}_calculatedFoundation`) || "{}"
+            ),
+          };
+        }
+      }
       return snap;
     } catch {
       return location.state || null;
@@ -173,7 +218,28 @@ export function ReportView() {
             const storedTaper = JSON.parse(
               sessionStorage.getItem(`${projectType}_taperPoleStandard`) || "{}"
             );
-            const poleHeightId = storedTaper?.poleStandardHeightId;
+            let poleHeightId = storedTaper?.poleStandardHeightId;
+            if (!poleHeightId) {
+              try {
+                const poleStandards = await getPoleStandardData();
+                const stdCode = storedTaper?.poleType;
+                const entry = poleStandards?.find(
+                  (item) => item.name?.toUpperCase().includes(`(${stdCode})`) || item.name === stdCode,
+                );
+                const rawH = Number(storedTaper?.height);
+                const mH = rawH > 100 ? rawH / 1000 : rawH;
+                const targetMm = Math.round(mH * 1000);
+                const matchedH = entry?.poleStandardHeights?.find(
+                  (h) => Math.abs(Number(h.height) - targetMm) < 50,
+                );
+                if (matchedH?.id) {
+                  poleHeightId = matchedH.id;
+                }
+              } catch (err) {
+                console.warn("Could not resolve poleStandardHeightId from master data:", err);
+              }
+            }
+
             if (poleHeightId) {
               const std = String(storedCond?.designStandard || storedCond?.standard || "").toLowerCase();
               const isOldJil =
@@ -257,13 +323,15 @@ export function ReportView() {
             }
           } catch (ptErr) {
             console.warn("fetchOfficialReport project tools error:", ptErr);
-            const status = ptErr?.response?.status || (ptErr?.response ? "HTTP Error" : "Network Error");
-            setReportError({
-              title: status === 422 ? "Report Validation Failed (HTTP 422)" : "Unable to Load Report",
-              message: ptErr?.response?.data?.message || ptErr?.message || "Failed to load report from server.",
-              details: ptErr?.response?.data || ptErr?.message,
-              status,
-            });
+            if (!storedSnapshot?.results?.length && !storedSnapshot?.calculatedPole) {
+              const status = ptErr?.response?.status || (ptErr?.response ? "HTTP Error" : "Network Error");
+              setReportError({
+                title: status === 422 ? "Report Validation Failed (HTTP 422)" : "Unable to Load Report",
+                message: ptErr?.response?.data?.message || ptErr?.message || "Failed to load report from server.",
+                details: ptErr?.response?.data || ptErr?.message,
+                status,
+              });
+            }
           } finally {
             setIsLoadingReport(false);
           }
@@ -446,7 +514,16 @@ export function ReportView() {
     try {
       const dataTaper = STANDARD_POLE_DATA?.tapered || STANDARD_POLE_DATA?.taper || {};
       const poleType = (taperPoleStandard?.poleType || "IA").toUpperCase();
-      const groundPos = taperPoleStandard?.groundPosition || "onGL";
+      const rawGroundPos =
+        taperPoleStandard?.groundPosition || condition?.groundPosition || "onGL";
+      const groundPos =
+        taperPoleStandard?.installationPole === "embedment" ||
+        condition?.installationPole === "embedment" ||
+        rawGroundPos === "embedment" ||
+        rawGroundPos === "under_gl" ||
+        rawGroundPos === "underGL"
+          ? "underGL"
+          : "onGL";
       const heightKey = String(taperPoleStandard?.height || "10");
       const rawH = Number(heightKey);
       const mH = rawH > 100 ? rawH / 1000 : rawH;
@@ -505,7 +582,12 @@ export function ReportView() {
           : official?.geometry?.stepPoles && official.geometry.stepPoles.length > 0
             ? official.geometry.stepPoles.map((sp, idx) => ({
                 name: sp.name || `Pole ${idx + 1}`,
-                material: sp.material || sp.materialName || "STK400",
+                material:
+                  (typeof sp.material === "object"
+                    ? sp.material?.name
+                    : sp.material) ||
+                  sp.materialName ||
+                  "STK400",
                 lowerDiameter: sp.diameterLowerMm || sp.lowerDiameterMm || sp.lowerDiameter,
                 upperDiameter: sp.diameterUpperMm || sp.upperDiameterMm || sp.upperDiameter,
                 lowerThickness: sp.thicknessLowerMm || sp.thicknessMm || sp.lowerThickness,
@@ -833,20 +915,7 @@ export function ReportView() {
 
   const onBackCalculation = () => {
     if (location.pathname.startsWith("/project-tools")) {
-      let cond = {};
-      try {
-        cond = JSON.parse(sessionStorage.getItem(`${projectType}_condition`) || "{}");
-      } catch {}
-      const choice = sessionStorage.getItem(`${projectType}_foundation_step_choice`);
-      let targetStep = "structural";
-      if (cond?.foundationEnabled || choice === "foundation") {
-        targetStep = "foundation";
-      } else if (cond?.baseplateEnabled) {
-        targetStep = "baseplate";
-      } else if (cond?.openingEnabled) {
-        targetStep = "opening";
-      }
-      navigate(`/project-tools/${targetStep}`);
+      navigate("/project-tools/structural");
       return;
     }
     if (projectType && draftId) {
@@ -922,7 +991,61 @@ export function ReportView() {
     }
   }, [reportData, projectType]);
 
-  const overheadWires = useMemo(() => {
+  const livePoles = useMemo(() => {
+    if (
+      Array.isArray(reportData?.calculatedPoles?.poles) &&
+      reportData.calculatedPoles.poles.length > 0
+    ) {
+      return reportData.calculatedPoles.poles;
+    }
+    if (Array.isArray(reportData?.poles) && reportData.poles.length > 0) {
+      return reportData.poles;
+    }
+    try {
+      const saved = sessionStorage.getItem(`${projectType}_poles`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  }, [reportData, projectType]);
+
+  const liveArms = useMemo(() => {
+    if (
+      Array.isArray(reportData?.calculatedPoles?.arms) &&
+      reportData.calculatedPoles.arms.length > 0
+    ) {
+      return reportData.calculatedPoles.arms;
+    }
+    if (Array.isArray(reportData?.arms) && reportData.arms.length > 0) {
+      return reportData.arms;
+    }
+    try {
+      const saved = sessionStorage.getItem(`${projectType}_arms`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  }, [reportData, projectType]);
+
+  const liveDirectObjects = useMemo(() => {
+    if (
+      Array.isArray(reportData?.calculatedPoles?.directObjects) &&
+      reportData.calculatedPoles.directObjects.length > 0
+    ) {
+      return reportData.calculatedPoles.directObjects;
+    }
+    if (
+      Array.isArray(reportData?.directObjects) &&
+      reportData.directObjects.length > 0
+    ) {
+      return reportData.directObjects;
+    }
+    try {
+      const saved = sessionStorage.getItem(`${projectType}_directObjects`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return [];
+  }, [reportData, projectType]);
+
+  const liveOverheadWires = useMemo(() => {
     if (
       Array.isArray(reportData?.calculatedPoles?.overheadWires) &&
       reportData.calculatedPoles.overheadWires.length > 0
@@ -938,26 +1061,38 @@ export function ReportView() {
     try {
       const saved = sessionStorage.getItem(`${projectType}_overheadWires`);
       if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
+    } catch {}
     return [];
   }, [reportData, projectType]);
 
+  const livePoleConfig = useMemo(() => {
+    if (reportData?.poleConfig) return reportData.poleConfig;
+    try {
+      const saved = sessionStorage.getItem(`${projectType}_poleConfig`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  }, [reportData, projectType]);
+
+  // Skematik murni dipetakan dari data inputan aktif pengguna (Custom & Standard)
   const schematicParams = useMemo(() => {
-    return getStandardPoleSchematicParameters({
-      taperPoleStandard,
-      straightPoleStandard,
-      poleTypeStandard,
+    return mapInputToSchematicParameters({
+      poles: livePoles,
+      arms: liveArms,
+      directObjects: liveDirectObjects,
+      overheadWires: liveOverheadWires,
       condition,
-      overheadWires,
+      poleConfig: livePoleConfig,
+      taperPoleStandard,
     });
   }, [
-    taperPoleStandard,
-    straightPoleStandard,
-    poleTypeStandard,
+    livePoles,
+    liveArms,
+    liveDirectObjects,
+    liveOverheadWires,
     condition,
-    overheadWires,
+    livePoleConfig,
+    taperPoleStandard,
   ]);
 
   const iframeRef = useRef(null);
@@ -1024,10 +1159,12 @@ export function ReportView() {
     schematicParams?.standardId &&
     schematicData.standardId === schematicParams.standardId;
 
+  // Skematik murni diambil dari sistem Pak Amir (tanpa fallback grafis lokal)
   const reportSchematicSvg =
     (isMatchingSchematic ? finalSvg : null) ||
     finalSvg ||
-    reportData?.schematicSvg;
+    reportData?.schematicSvg ||
+    null;
 
   // ── Render report by project type ──
   // Each template receives only the props it needs.
@@ -1198,6 +1335,7 @@ export function ReportView() {
                     <span className="sm:hidden">PDF</span>
                   </button>
 
+                  {/* Hidden for now: Save Draft button
                   <button
                     type="button"
                     onClick={() => setShowSaveDraftModal(true)}
@@ -1207,6 +1345,7 @@ export function ReportView() {
                     <Save className="w-4 h-4 shrink-0" />
                     <span>Save Draft</span>
                   </button>
+                  */}
                 </>
               ) : (
                 <>

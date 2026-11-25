@@ -31,7 +31,9 @@ import { notifyCalculationProgressChanged } from "../../../utils/calculationProg
 
 // Main view component for baseplate calculation form
 export default function BaseplateFormView() {
-  const { type: projectType, draftId } = useParams();
+  const { type: paramType, draftId } = useParams();
+  const projectType =
+    paramType || sessionStorage.getItem("projectType") || "lighting-project";
 
   const navigate = useNavigate();
   const location = useLocation();
@@ -176,9 +178,14 @@ export default function BaseplateFormView() {
           />
         </Helmet>
 
-        <div className="flex-1 rounded-t-2xl hp:rounded-t-xl bg-gray-50">
-          {/* PERBAIKAN: Menggunakan HeaderCalculationPage sesuai dengan import di atas */}
-          <HeaderCalculationPage />
+        <div className={isProjectTools ? "w-full" : "flex-1 rounded-t-2xl hp:rounded-t-xl bg-gray-50"}>
+          {isProjectTools ? (
+            <div className="w-full max-w-[1440px] mx-auto pt-0 px-2">
+              <ProjectToolsFlowHeader currentStep="baseplate" />
+            </div>
+          ) : (
+            <HeaderCalculationPage />
+          )}
 
           <div className="w-full max-w-[1440px] mx-auto pt-0 pb-24 sm:pb-8 px-2">
             {/* ── Baseplate configuration (Baseplate Type + Detail) ── */}

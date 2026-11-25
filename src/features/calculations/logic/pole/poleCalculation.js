@@ -5,6 +5,7 @@ import {
 } from "../../services/requestService";
 import {
   resolveDesignStandardId,
+  mapCalculationStepPoles,
   mapCalculationDirectObjects,
   mapCalculationOverheadWires,
   mapCalculationArms,
@@ -177,12 +178,14 @@ export async function executePoleCalculation({
 
     const calcDirectObjects = mapCalculationDirectObjects(directObjects, isOldJil);
     const materialsList = await getMasterMaterials();
+    const calcStepPoles = mapCalculationStepPoles(poles, materialsList);
     const calcOverheadWires = mapCalculationOverheadWires(overheadWires);
     const calcArms = mapCalculationArms(arms, materialsList, isOldJil);
 
     try {
       const res = await calculateCase(resolvedRequestId, caseId, {
         poleStandardHeightId: taperPoleStandard.poleStandardHeightId,
+        stepPoles: calcStepPoles,
         directObjects: calcDirectObjects,
         overheadWires: calcOverheadWires,
         arms: calcArms,
@@ -232,11 +235,13 @@ export async function executePoleCalculation({
     const groundPosition =
       taperPoleStandard?.installationPole === "embedment"
         ? "embedment"
-        : taperPoleStandard?.groundPosition === "underGL"
+        : taperPoleStandard?.groundPosition === "underGL" ||
+            taperPoleStandard?.groundPosition === "under_gl"
           ? "under_gl"
           : "on_gl";
 
     const materialsList = await getMasterMaterials();
+    const calcStepPoles = mapCalculationStepPoles(poles, materialsList);
     const calcOverheadWires = mapCalculationOverheadWires(overheadWires);
     const calcArms = mapCalculationArms(arms, materialsList, isOldJil);
 
@@ -253,7 +258,10 @@ export async function executePoleCalculation({
           : null,
       },
       input: {
-        poleStandardHeightId: taperPoleStandard.poleStandardHeightId,
+        ...(taperPoleStandard?.poleStandardHeightId
+          ? { poleStandardHeightId: taperPoleStandard.poleStandardHeightId }
+          : {}),
+        stepPoles: calcStepPoles,
         directObjects: calcDirectObjects,
         overheadWires: calcOverheadWires,
         arms: calcArms,
@@ -316,11 +324,13 @@ export async function executePoleCalculation({
       };
 
       if (type === "taper" || type === "tapered") {
-        // Untuk taper, BE mungkin butuh selection user + data hasil resolve
+        // Untuk taper, BE butuh selection user + data hasil resolve
         const lowestStep =
-          taperPoleStandard?.groundPosition === "onGL"
-            ? "0"
-            : String(taperPoleStandard?.embedmentLength ?? "0");
+          poleConfig?.lowestHeight !== undefined && poleConfig?.lowestHeight !== ""
+            ? String(poleConfig.lowestHeight)
+            : taperPoleStandard?.groundPosition === "onGL"
+              ? "0"
+              : String(taperPoleStandard?.embedmentLength || "-300");
 
         payload = {
           ...payload,

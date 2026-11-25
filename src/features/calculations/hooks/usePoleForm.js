@@ -36,14 +36,25 @@ export function usePoleForm(projectType) {
   useEffect(() => {
     const saved = sessionStorage.getItem(`${projectType}_poles`);
     if (!saved) return;
-    const parsed = JSON.parse(saved);
-    const maxId = Math.max(0, ...parsed.map((p) => Number(p.id)));
-    poleIdRef.current = maxId + 1;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const maxId = Math.max(0, ...parsed.map((p) => Number(p.id) || 0));
+        poleIdRef.current = maxId + 1;
+      }
+    } catch {}
   }, [projectType]);
+
+  // Ensure poles is never empty (minimum 1 step pole)
+  useEffect(() => {
+    if (!poles || poles.length === 0) {
+      setPoles([DEFAULT_POLE]);
+    }
+  }, [poles, setPoles]);
 
   // Guards active tab — resets to first pole if active tab becomes invalid
   useEffect(() => {
-    if (poles.length === 0) return;
+    if (!poles || poles.length === 0) return;
     const isValid = poles.some((p) => p.id === activeTab);
     if (!isValid) setActiveTab(poles[0].id);
   }, [poles, activeTab]);
@@ -167,6 +178,7 @@ export function usePoleForm(projectType) {
 
   return {
     poles,
+    setPoles,
     poleErrors,
     activeTab,
     activePole,

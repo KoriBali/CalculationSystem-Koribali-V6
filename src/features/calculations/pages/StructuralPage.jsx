@@ -45,6 +45,7 @@ import {
   Loader2,
   ArrowRight,
   AlertCircle,
+  RotateCcw,
   X,
 } from "lucide-react";
 
@@ -56,9 +57,11 @@ import { useArmForm } from "../hooks/useArmForm";
 import { usePoleStandardForm } from "../hooks/usePoleStandardForm";
 import { usePoleConfigForm } from "../hooks/usePoleConfigForm";
 import { usePoleCalculation } from "../hooks/usePoleCalculation";
+import { useReport } from "../../report/hooks/useReport";
 
 // Komponen Ilustrasi, Tabel, & Modal
 import { LowestHeightIllustration } from "../components/forms/pole/LowestHeightIllustration";
+import { ProjectToolsFlowHeader } from "../components/layout/ProjectToolsFlowHeader";
 import { ResultsTableView } from "../components/tables/pole-result/ResultTableView";
 import { ToastModal } from "../components/modals/ToastModal";
 import { notifyCalculationProgressChanged } from "../utils/calculationProgressEvent";
@@ -204,43 +207,154 @@ export default function StructuralPage() {
   const baseplateEnabled = isBaseplate;
   const foundationEnabled = Boolean(condition.foundationEnabled);
 
-  // ─── 4. STEP NAVIGATION CALCULATION ─────────────────────────────────────────
-  const { nextLabel, nextRoute } = useMemo(() => {
-    if (isStandard) {
-      return {
-        nextLabel: "Next: Opening",
-        nextRoute: "/project-tools/opening",
-      };
+  // Auto-heal baseplateEnabled in condition to match isBaseplate
+  useEffect(() => {
+    if (condition.baseplateEnabled !== isBaseplate) {
+      updateCondition({ baseplateEnabled: isBaseplate });
     }
+  }, [isBaseplate, condition.baseplateEnabled]);
 
-    if (openingEnabled) {
-      return {
-        nextLabel: "Next: Opening",
-        nextRoute: "/project-tools/opening",
-      };
+  // Auto-sort step poles: pastikan Pole-1 selalu berada di Step Pole 1
+  useEffect(() => {
+    if (Array.isArray(poleForm.poles) && poleForm.poles.length > 1) {
+      const firstNum = (poleForm.poles[0]?.name || "").match(/\d+/)?.[0];
+      const lastNum = (
+        poleForm.poles[poleForm.poles.length - 1]?.name || ""
+      ).match(/\d+/)?.[0];
+      if (firstNum && lastNum && Number(firstNum) > Number(lastNum)) {
+        const sorted = [...poleForm.poles]
+          .sort((a, b) => {
+            const numA = Number((a.name || "").match(/\d+/)?.[0] || 0);
+            const numB = Number((b.name || "").match(/\d+/)?.[0] || 0);
+            return numA - numB;
+          })
+          .map((p, idx) => ({
+            ...p,
+            id: String(idx + 1),
+          }));
+        poleForm.setPoles(sorted);
+      }
     }
-    if (isBaseplate) {
-      return {
-        nextLabel: "Next: Baseplate",
-        nextRoute: "/project-tools/baseplate",
-      };
-    }
-    if (foundationEnabled) {
-      return {
-        nextLabel: "Next: Foundation",
-        nextRoute: "/project-tools/foundation",
-      };
-    }
-    return {
-      nextLabel: "Generate Report",
-      nextRoute: "/project-tools/report",
-    };
-  }, [isStandard, openingEnabled, isBaseplate, foundationEnabled]);
+  }, [poleForm.poles]);
 
-  const handleNextStep = () => {
-    if (calculation.isCalculated && !calculation.isInputsChanged) {
-      navigate(nextRoute);
+  // Auto-normalize arms: jika arms di session/state memiliki format raw backend (diameterMm, objects, dll.)
+  // atau armObjects masih kosong padahal raw objects ada, konversikan ke format form Structural
+  useEffect(() => {
+    if (Array.isArray(armForm.arms) && armForm.arms.length > 0) {
+      let needsUpdate = false;
+      const normalized = armForm.arms.map((arm, armIdx) => {
+        const hasRawBeProps =
+          arm.diameterMm !== undefined ||
+          arm.totalLengthM !== undefined ||
+          arm.installationHeightM !== undefined ||
+          Array.isArray(arm.objects);
+
+        const rawObjects = arm.objects || arm.armObjects || [];
+        const hasMissingAo =
+          (!arm.armObjects || arm.armObjects.length === 0) && rawObjects.length > 0;
+        const hasMissingFields =
+          (arm.diameter === undefined || arm.diameter === "" || arm.diameter == null) &&
+          (arm.diameterMm !== undefined || arm.totalLengthM !== undefined);
+
+        if (!hasRawBeProps && !hasMissingAo && !hasMissingFields) {
+          return arm;
+        }
+
+        needsUpdate = true;
+        const matName =
+          typeof arm.material === "object"
+            ? arm.material?.name || "STK400"
+            : arm.material || arm.materialName || "STK400";
+
+        const mappedArmObjects = rawObjects.map((ao, aoIdx) => ({
+          idAo: String(ao.idAo || aoIdx + 1),
+          name: ao.name || "灯具",
+          type:
+            ao.objectKind === "directional" || ao.type === "directional"
+              ? "directional"
+              : "omni",
+          frontArea: String(ao.frontAreaM2 ?? ao.frontArea ?? "0.1"),
+          sideArea: String(ao.sideAreaM2 ?? ao.sideArea ?? ""),
+          weight: String(ao.massPerUnitKg ?? ao.weight ?? "14"),
+          hDistance: String(
+            ao.horizontalLoadDistanceM != null
+              ? Math.round(Number(ao.horizontalLoadDistanceM) * 1000)
+              : (ao.hDistance ?? (arm.exposedLengthM != null ? Math.round(Number(arm.exposedLengthM) * 1000) : "180"))
+          ),
+          nnC: String(ao.baseWindCoefficient ?? ao.nnC ?? "1"),
+          quantity: String(ao.quantity ?? "1"),
+          fixAngle: String(ao.fixedAngleDeg ?? ao.fixAngle ?? "0"),
+        }));
+
+        const totalLengthMm =
+          arm.totalLengthM != null
+            ? Math.round(Number(arm.totalLengthM) * 1000)
+            : (arm.length ? Math.round(Number(arm.length)) : 180);
+        const expLengthMm =
+          arm.exposedLengthM != null
+            ? Math.round(Number(arm.exposedLengthM) * 1000)
+            : (arm.expLength ? Math.round(Number(arm.expLength)) : totalLengthMm);
+        const heightMm =
+          arm.installationHeightM != null
+            ? Math.round(Number(arm.installationHeightM) * 1000)
+            : (arm.height || arm.zHeight ? Math.round(Number(arm.height || arm.zHeight)) : 4800);
+        const hDistanceMm =
+          mappedArmObjects[0]?.hDistance || (arm.hDistance ? String(arm.hDistance) : String(expLengthMm));
+
+        // Create clean normalized arm without leaving raw BE fields
+        const cleanArm = { ...arm };
+        delete cleanArm.diameterMm;
+        delete cleanArm.thicknessMm;
+        delete cleanArm.totalLengthM;
+        delete cleanArm.exposedLengthM;
+        delete cleanArm.installationHeightM;
+        delete cleanArm.fixedAngleDeg;
+        delete cleanArm.objects;
+
+        return {
+          ...cleanArm,
+          idArm: String(arm.idArm || armIdx + 1),
+          id: String(arm.id || armIdx + 1),
+          name: arm.name || `Arm-${armIdx + 1}`,
+          material: matName,
+          armType: arm.armType || arm.type || "Straight",
+          type: arm.type || arm.armType || "Straight",
+          diameter: String(arm.diameterMm ?? arm.diameter ?? "60.5"),
+          thickness: String(arm.thicknessMm ?? arm.thickness ?? "3.8"),
+          length: String(totalLengthMm),
+          expLength: String(expLengthMm),
+          height: String(heightMm),
+          zHeight: String(heightMm),
+          hDistance: String(hDistanceMm),
+          fixAngle: String(arm.fixedAngleDeg ?? arm.fixAngle ?? "0"),
+          nnC: String(arm.baseWindCoefficient ?? arm.nnC ?? "0.7"),
+          quantity: String(arm.quantity ?? "1"),
+          armObjects: mappedArmObjects,
+        };
+      });
+
+      if (needsUpdate) {
+        armForm.setArms(normalized);
+      }
     }
+  }, [armForm.arms]);
+
+  // ─── 4. REPORT HOOK & GENERATION ───────────────────────────────────────────
+  const report = useReport(projectType);
+
+  const handleGenerateReport = async () => {
+    if (
+      !calculation.isCalculated ||
+      calculation.loading ||
+      calculation.isInputsChanged ||
+      report.isGeneratingReport
+    ) {
+      return;
+    }
+    await report.makeReport({
+      isCalculated: true,
+      showToast: (msg, type) => calculation.setToast({ message: msg, type }),
+    });
   };
 
   const handleSelectDesignStandard = (std) => {
@@ -248,6 +362,138 @@ export default function StructuralPage() {
     if (std.id === "old_lighting_pole") {
       updateCondition({ designStandard: std.id });
     }
+    calculation.resetCalculation?.();
+  };
+
+  // ─── STANDARD PRESET & MODIFICATION TRACKING ─────────────────────────────────
+  const standardPreset = useMemo(() => {
+    try {
+      const raw = sessionStorage.getItem(`${projectType}_standardPreset`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, [projectType]);
+
+  const isModifiedFromPreset = useMemo(() => {
+    if (!isStandard || !standardPreset) return false;
+    try {
+      // 1. Pole config (lowestHeight, overDesign)
+      const presetLowest = String(standardPreset.poleConfig?.lowestHeight ?? "0");
+      const currentLowest = String(poleConfigForm.poleConfig?.lowestHeight ?? "0");
+      if (presetLowest !== currentLowest) return true;
+
+      const presetOverDesign = String(standardPreset.poleConfig?.overDesign ?? "1");
+      const currentOverDesign = String(poleConfigForm.poleConfig?.overDesign ?? "1");
+      if (presetOverDesign !== currentOverDesign) return true;
+
+      // 2. Step Poles
+      const presetPoles = standardPreset.poles || [];
+      const currentPoles = poleForm.poles || [];
+      if (presetPoles.length !== currentPoles.length) return true;
+      for (let i = 0; i < presetPoles.length; i++) {
+        const p1 = presetPoles[i];
+        const p2 = currentPoles[i];
+        if (
+          String(p1.zHeight ?? p1.height ?? "") !== String(p2.zHeight ?? p2.height ?? "") ||
+          String(p1.lowerDiameter ?? "") !== String(p2.lowerDiameter ?? "") ||
+          String(p1.upperDiameter ?? "") !== String(p2.upperDiameter ?? "") ||
+          String(p1.lowerThickness ?? "") !== String(p2.lowerThickness ?? "") ||
+          String(p1.upperThickness ?? "") !== String(p2.upperThickness ?? "") ||
+          String(p1.material ?? "") !== String(p2.material ?? "") ||
+          String(p1.poleType ?? "") !== String(p2.poleType ?? "")
+        ) {
+          return true;
+        }
+      }
+
+      // 3. Direct Objects
+      const presetDo = standardPreset.directObjects || [];
+      const currentDo = doForm.directObjects || [];
+      if (presetDo.length !== currentDo.length) return true;
+      for (let i = 0; i < presetDo.length; i++) {
+        const d1 = presetDo[i];
+        const d2 = currentDo[i];
+        if (
+          String(d1.frontArea ?? "") !== String(d2.frontArea ?? "") ||
+          String(d1.weight ?? "") !== String(d2.weight ?? "") ||
+          String(d1.zHeight ?? "") !== String(d2.zHeight ?? "") ||
+          String(d1.nnC ?? "1") !== String(d2.nnC ?? "1") ||
+          String(d1.quantity ?? "1") !== String(d2.quantity ?? "1")
+        ) {
+          return true;
+        }
+      }
+
+      // 4. Arms
+      const presetArms = standardPreset.arms || [];
+      const currentArms = armForm.arms || [];
+      if (presetArms.length !== currentArms.length) return true;
+      for (let i = 0; i < presetArms.length; i++) {
+        const a1 = presetArms[i];
+        const a2 = currentArms[i];
+        if (
+          String(a1.diameter ?? a1.diameterMm ?? "") !== String(a2.diameter ?? a2.diameterMm ?? "") ||
+          String(a1.thickness ?? a1.thicknessMm ?? "") !== String(a2.thickness ?? a2.thicknessMm ?? "") ||
+          String(a1.length ?? a1.totalLengthM ?? "") !== String(a2.length ?? a2.totalLengthM ?? "") ||
+          String(a1.height ?? a1.zHeight ?? "") !== String(a2.height ?? a2.zHeight ?? "")
+        ) {
+          return true;
+        }
+      }
+
+      // 5. Overhead Wires
+      const currentOhw = ohwForm.overheadWires || [];
+      if (currentOhw.length > 0) return true;
+
+      return false;
+    } catch {
+      return false;
+    }
+  }, [
+    isStandard,
+    standardPreset,
+    poleConfigForm.poleConfig,
+    poleForm.poles,
+    doForm.directObjects,
+    armForm.arms,
+    ohwForm.overheadWires,
+  ]);
+
+  const handleResetToStandard = () => {
+    if (!standardPreset) return;
+    if (standardPreset.poles) {
+      poleForm.setPoles(JSON.parse(JSON.stringify(standardPreset.poles)));
+    }
+    if (standardPreset.directObjects) {
+      doForm.setDirectObjects(JSON.parse(JSON.stringify(standardPreset.directObjects)));
+    }
+    if (standardPreset.arms) {
+      armForm.setArms(JSON.parse(JSON.stringify(standardPreset.arms)));
+    }
+    if (standardPreset.overheadWires) {
+      ohwForm.setOverheadWires([]);
+    }
+    if (standardPreset.poleConfig) {
+      poleConfigForm.setPoleConfig(JSON.parse(JSON.stringify(standardPreset.poleConfig)));
+    }
+
+    // Reset calculation state so user must calculate with standard values
+    try {
+      sessionStorage.removeItem(`${projectType}_isCalculatedPole`);
+      sessionStorage.removeItem(`${projectType}_results`);
+      sessionStorage.removeItem(`${projectType}_displayResult`);
+      sessionStorage.removeItem(`${projectType}_resultsDo`);
+      sessionStorage.removeItem(`${projectType}_resultsArm`);
+      sessionStorage.removeItem(`${projectType}_resultsOhw`);
+      sessionStorage.removeItem(`${projectType}_showResults`);
+      sessionStorage.removeItem(`${projectType}_calculatedInputsFingerprint`);
+    } catch {}
+
+    calculation.setToast?.({
+      message: "Reset to standard specifications successfully.",
+      type: "success",
+    });
   };
 
   // ─── QUICK SET & CLIPBOARD HANDLERS ────────────────────────────────────────
@@ -295,41 +541,50 @@ export default function StructuralPage() {
   const handleResetPole = (idx) => {
     poleForm.setPoles((prev) => {
       const next = [...prev];
-      next[idx] = {
-        id: next[idx].id,
-        name: "",
-        material: "STK400",
-        poleType: "Straight",
-        lowerDiameter: "",
-        upperDiameter: "",
-        lowerThickness: "",
-        upperThickness: "",
-        zHeight: "",
-        quantity: "1",
-      };
+      if (isStandard && standardPreset?.poles?.[idx]) {
+        next[idx] = { ...standardPreset.poles[idx], id: next[idx].id || String(idx + 1) };
+      } else {
+        next[idx] = {
+          id: next[idx].id,
+          name: "",
+          material: "STK400",
+          poleType: "Straight",
+          lowerDiameter: "",
+          upperDiameter: "",
+          lowerThickness: "",
+          upperThickness: "",
+          zHeight: "",
+          quantity: "1",
+        };
+      }
       return next;
     });
   };
   const handleDeletePole = (idx) => {
+    if (poleForm.poles.length <= 1) return;
     poleForm.setPoles((prev) => prev.filter((_, i) => i !== idx));
   };
   const handleAddPole = () => {
     if (poleForm.poles.length >= 6) return;
-    poleForm.setPoles((prev) => [
-      ...prev,
-      {
-        id: String(prev.length + 1),
-        name: "",
-        material: "STK400",
-        poleType: "Straight",
-        lowerDiameter: "",
-        upperDiameter: "",
-        lowerThickness: "",
-        upperThickness: "",
-        zHeight: "",
-        quantity: "1",
-      },
-    ]);
+    poleForm.setPoles((prev) => {
+      const current = Array.isArray(prev) ? prev : [];
+      if (current.length >= 6) return current;
+      return [
+        ...current,
+        {
+          id: String(current.length + 1),
+          name: "",
+          material: "STK400",
+          poleType: "Straight",
+          lowerDiameter: "",
+          upperDiameter: "",
+          lowerThickness: "",
+          upperThickness: "",
+          zHeight: "",
+          quantity: "1",
+        },
+      ];
+    });
   };
 
   // 2. Direct Objects
@@ -376,18 +631,22 @@ export default function StructuralPage() {
   const handleResetDo = (idx) => {
     doForm.setDirectObjects((prev) => {
       const next = [...prev];
-      next[idx] = {
-        idDo: next[idx].idDo,
-        name: "",
-        type: "omni",
-        frontArea: "",
-        sideArea: "",
-        weight: "",
-        zHeight: "",
-        nnC: "1",
-        quantity: "1",
-        fixAngle: "0",
-      };
+      if (isStandard && standardPreset?.directObjects?.[idx]) {
+        next[idx] = { ...standardPreset.directObjects[idx], idDo: next[idx].idDo || String(idx + 1) };
+      } else {
+        next[idx] = {
+          idDo: next[idx].idDo,
+          name: "",
+          type: "omni",
+          frontArea: "",
+          sideArea: "",
+          weight: "",
+          zHeight: "",
+          nnC: "1",
+          quantity: "1",
+          fixAngle: "0",
+        };
+      }
       return next;
     });
   };
@@ -426,11 +685,14 @@ export default function StructuralPage() {
           current.push({
             idOhw: String(i + 1),
             name: "",
+            weight: "",
             diameter: "",
-            tension: "",
-            angle: "0",
             zHeight: "",
-            quantity: "1",
+            span: "",
+            saggingRatio: "",
+            nnC: "1",
+            fixAngle: "0",
+            verticalAngle: "0",
           });
         }
       } else if (count < current.length) {
@@ -457,11 +719,14 @@ export default function StructuralPage() {
       next[idx] = {
         idOhw: next[idx].idOhw,
         name: "",
+        weight: "",
         diameter: "",
-        tension: "",
-        angle: "0",
         zHeight: "",
-        quantity: "1",
+        span: "",
+        saggingRatio: "",
+        nnC: "1",
+        fixAngle: "0",
+        verticalAngle: "0",
       };
       return next;
     });
@@ -476,11 +741,14 @@ export default function StructuralPage() {
       {
         idOhw: String(prev.length + 1),
         name: "",
+        weight: "",
         diameter: "",
-        tension: "",
-        angle: "0",
         zHeight: "",
-        quantity: "1",
+        span: "",
+        saggingRatio: "",
+        nnC: "1",
+        fixAngle: "0",
+        verticalAngle: "0",
       },
     ]);
   };
@@ -532,21 +800,25 @@ export default function StructuralPage() {
   const handleResetArm = (idx) => {
     armForm.setArms((prev) => {
       const next = [...prev];
-      next[idx] = {
-        idArm: next[idx].idArm,
-        name: "",
-        material: "STK400",
-        diameter: "",
-        thickness: "",
-        length: "",
-        expLength: "",
-        height: "",
-        hDistance: "",
-        fixAngle: "0",
-        nnC: "0.7",
-        quantity: "1",
-        armObjects: [],
-      };
+      if (isStandard && standardPreset?.arms?.[idx]) {
+        next[idx] = { ...standardPreset.arms[idx], idArm: next[idx].idArm || String(idx + 1) };
+      } else {
+        next[idx] = {
+          idArm: next[idx].idArm,
+          name: "",
+          material: "STK400",
+          diameter: "",
+          thickness: "",
+          length: "",
+          expLength: "",
+          height: "",
+          hDistance: "",
+          fixAngle: "0",
+          nnC: "0.7",
+          quantity: "1",
+          armObjects: [],
+        };
+      }
       return next;
     });
   };
@@ -701,109 +973,25 @@ export default function StructuralPage() {
   // ─── 5. VISIBILITY CHECKS FOR SECTIONS ──────────────────────────────────────
   const showDirectObjects =
     !isStandard || (doForm.directObjects && doForm.directObjects.length > 0);
-  const showOhw =
-    !isStandard || (ohwForm.overheadWires && ohwForm.overheadWires.length > 0);
+  // Overhead Wire selalu ditampilkan apa adanya baik mode standard maupun custom
+  const showOhw = true;
   const showArms =
     !isStandard || (armForm.arms && armForm.arms.length > 0);
 
+  const isReadyToReport =
+    Boolean(calculation.isCalculated) &&
+    !calculation.loading &&
+    !calculation.isInputsChanged;
+
   // ─── 6. JSX RENDER VIEW ─────────────────────────────────────────────────────
   return (
-    <div className="w-full">
+    <div className="w-full max-w-[1440px] mx-auto pt-0 pb-24 sm:pb-8 px-2">
       <Helmet>
         <title>Structural · Project Tools · KORI BALI</title>
       </Helmet>
 
-      {/* ── TOP HEADER / BREADCRUMB BAR (Stacked Layout) ── */}
-      <div className="mb-6 space-y-3 pb-4 border-b border-gray-200">
-        <div>
-          <Link
-            to="/project-tools"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-gray-900 text-white text-xs md:text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            <span>Back to project tools</span>
-          </Link>
-        </div>
-
-        {/* Step Navigation Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs md:text-sm font-medium">
-          <span className="px-3 py-1.5 rounded bg-gray-900 text-white font-semibold">
-            Structural
-          </span>
-          <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-
-          {/* Opening Tab */}
-          {openingEnabled && (
-            <>
-              {calculation.isCalculated && !calculation.isInputsChanged ? (
-                <Link
-                  to="/project-tools/opening"
-                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                >
-                  Opening
-                </Link>
-              ) : (
-                <span className="px-3 py-1.5 rounded bg-gray-50 text-gray-400 border border-gray-200 cursor-not-allowed">
-                  Opening
-                </span>
-              )}
-              <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-            </>
-          )}
-
-          {/* Baseplate Tab */}
-          {isBaseplate && (
-            <>
-              {calculation.isCalculated && !calculation.isInputsChanged ? (
-                <Link
-                  to="/project-tools/baseplate"
-                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                >
-                  Baseplate
-                </Link>
-              ) : (
-                <span className="px-3 py-1.5 rounded bg-gray-50 text-gray-400 border border-gray-200 cursor-not-allowed">
-                  Baseplate
-                </span>
-              )}
-              <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-            </>
-          )}
-
-          {/* Foundation Tab */}
-          {foundationEnabled && (
-            <>
-              {calculation.isCalculated && !calculation.isInputsChanged ? (
-                <Link
-                  to="/project-tools/foundation"
-                  className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-                >
-                  Foundation
-                </Link>
-              ) : (
-                <span className="px-3 py-1.5 rounded bg-gray-50 text-gray-400 border border-gray-200 cursor-not-allowed">
-                  Foundation
-                </span>
-              )}
-              <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-            </>
-          )}
-
-          {/* Report Tab */}
-          {calculation.isCalculated && !calculation.isInputsChanged ? (
-            <Link
-              to="/project-tools/report"
-              className="px-3 py-1.5 rounded bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
-            >
-              Report
-            </Link>
-          ) : (
-            <span className="px-3 py-1.5 rounded bg-gray-50 text-gray-400 border border-gray-200 cursor-not-allowed">
-              Report
-            </span>
-          )}
-        </div>
-      </div>
+      {/* ── TOP HEADER / BREADCRUMB BAR (Unified Project Tools Flow Header) ── */}
+      <ProjectToolsFlowHeader currentStep="structural" />
 
       {/* ── ACCORDION SECTIONS ── */}
       <div className="space-y-4">
@@ -842,11 +1030,10 @@ export default function StructuralPage() {
                         key={std.id}
                         type="button"
                         onClick={() => handleSelectDesignStandard(std)}
-                        className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm flex items-center justify-between cursor-pointer transition-colors ${
-                          isSelected
-                            ? "border-blue-500 bg-blue-50/50 text-blue-900 font-medium"
-                            : "border-gray-200 hover:border-gray-400 text-gray-700 bg-white"
-                        }`}
+                        className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm flex items-center justify-between cursor-pointer transition-colors ${isSelected
+                          ? "border-blue-500 bg-blue-50/50 text-blue-900 font-medium"
+                          : "border-gray-200 hover:border-gray-400 text-gray-700 bg-white"
+                          }`}
                       >
                         <span>{std.label}</span>
                         {isSelected ? (
@@ -874,7 +1061,7 @@ export default function StructuralPage() {
                     {/* Wind Speed */}
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                        Wind Speed
+                        Wind Speed <span className="text-red-500 font-semibold">*</span>
                       </label>
                       <div className="relative">
                         <input
@@ -895,7 +1082,7 @@ export default function StructuralPage() {
                     {/* Air Density */}
                     <div>
                       <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                        Air Density
+                        Air Density <span className="text-red-500 font-semibold">*</span>
                       </label>
                       <div className="relative">
                         <input
@@ -967,6 +1154,26 @@ export default function StructuralPage() {
 
           {openSections.spec && (
             <div className="p-5 space-y-6">
+              {/* ── Standard Customization Notice & Global Revert ── */}
+              {isStandard && isModifiedFromPreset && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-amber-50/90 border border-amber-200 rounded-lg text-amber-900 shadow-2xs">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                    <p className="text-xs font-medium">
+                      Specifications have been edited from standard preset. Calculations and reports will evaluate your customized input values.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleResetToStandard}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-white hover:bg-amber-100 border border-amber-300 text-amber-900 rounded shadow-2xs transition-colors cursor-pointer self-start sm:self-auto shrink-0"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Reset to Standard Values
+                  </button>
+                </div>
+              )}
+
               {/* ── Sub-section 1: Lowest Height Position ── */}
               <div className="border border-gray-200 rounded p-4 bg-white">
                 <h3 className="text-xs md:text-sm font-semibold text-blue-900 mb-4 flex items-center gap-2">
@@ -978,106 +1185,34 @@ export default function StructuralPage() {
                   {/* Left: Inputs */}
                   <div className="space-y-4">
                     <div>
-                      <span className="block text-xs font-semibold text-gray-700 mb-2">
-                        Select Installation Type
-                      </span>
-                      {!isStandard ? (
-                        <div className="flex flex-wrap gap-2">
-                          {[
-                            { id: "baseplate", label: "Baseplate" },
-                            { id: "embedment", label: "Embedment" },
-                          ].map((item) => {
-                            const isSel =
-                              (condition.installationPole || "baseplate") ===
-                              item.id;
-                            return (
-                              <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => {
-                                  updateCondition({
-                                    installationPole: item.id,
-                                    baseplateEnabled: item.id === "baseplate",
-                                  });
-                                }}
-                                className={`px-4 py-2 rounded border text-xs md:text-sm transition-all flex items-center gap-2 cursor-pointer ${
-                                  isSel
-                                    ? "border-blue-500 bg-blue-50/60 text-blue-900 font-medium"
-                                    : "border-gray-200 hover:border-gray-400 text-gray-800 bg-white"
-                                }`}
-                              >
-                                <span>{item.label}</span>
-                                {isSel ? (
-                                  <CheckCircle className="w-4 h-4 text-blue-500 shrink-0" />
-                                ) : (
-                                  <Circle className="w-4 h-4 text-gray-300 shrink-0" />
-                                )}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="px-3.5 py-2 rounded border border-gray-200 bg-gray-50 text-xs md:text-sm font-medium text-gray-800">
-                          {isBaseplate ? "Baseplate" : "Embedment"}
-                        </div>
-                      )}
+                      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                        Lowest Height <span className="text-red-500 font-semibold">*</span>
+                      </label>
+                      <div className="relative max-w-sm">
+                        <input
+                          type="number"
+                          value={
+                            poleConfigForm.poleConfig?.lowestHeight ?? "0"
+                          }
+                          onChange={(e) =>
+                            poleConfigForm.updatePoleConfig({
+                              lowestHeight: e.target.value,
+                            })
+                          }
+                          className="w-full h-10 pl-3.5 pr-12 rounded-md border border-gray-300 text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                        />
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-medium pointer-events-none">
+                          mm
+                        </span>
+                      </div>
                     </div>
-
-                    {isBaseplate ? (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                          Lowest Height
-                        </label>
-                        <div className="relative max-w-sm">
-                          <input
-                            type="number"
-                            value={
-                              poleConfigForm.poleConfig?.lowestHeight ?? "0"
-                            }
-                            onChange={(e) =>
-                              poleConfigForm.updatePoleConfig({
-                                lowestHeight: e.target.value,
-                              })
-                            }
-                            className="w-full pl-3 pr-12 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-700 bg-white"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs pointer-events-none">
-                            mm
-                          </span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div>
-                        <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                          Embedment Length
-                        </label>
-                        <div className="relative max-w-sm">
-                          <input
-                            type="number"
-                            value={
-                              poleConfigForm.poleConfig?.lowestHeight ?? "1800"
-                            }
-                            onChange={(e) =>
-                              poleConfigForm.updatePoleConfig({
-                                lowestHeight: e.target.value,
-                              })
-                            }
-                            className="w-full pl-3 pr-12 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-700 bg-white"
-                          />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs pointer-events-none">
-                            mm
-                          </span>
-                        </div>
-                      </div>
-                    )}
                   </div>
 
                   {/* Right: Interactive Illustration Graphic */}
                   <div className="w-full">
                     <LowestHeightIllustration
-                      installationType={isBaseplate ? "baseplate" : "embedment"}
+                      installationType="baseplate"
                       lowestHeight={poleConfigForm.poleConfig?.lowestHeight}
-                      embedmentLength={poleConfigForm.poleConfig?.lowestHeight}
                     />
                   </div>
                 </div>
@@ -1085,9 +1220,9 @@ export default function StructuralPage() {
                 {/* Overdesign Factor */}
                 <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-4">
                   <span className="text-xs font-semibold text-gray-900">
-                    Overdesign Factor
+                    Overdesign Factor <span className="text-red-500 font-semibold">*</span>
                   </span>
-                  <div className="w-36">
+                  <div className="w-44">
                     <input
                       type="number"
                       step="any"
@@ -1097,7 +1232,7 @@ export default function StructuralPage() {
                           overDesign: e.target.value,
                         })
                       }
-                      className="w-full px-3 py-1.5 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-700 bg-white"
+                      className="w-full h-10 px-3.5 rounded-md border border-gray-300 text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                     />
                   </div>
                 </div>
@@ -1106,23 +1241,36 @@ export default function StructuralPage() {
               {/* ── Sub-section 2: Step Poles ── */}
               <div>
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                  <div>
+                  <div className="flex items-center gap-3">
                     <h3 className="text-xs md:text-sm font-semibold text-blue-900 flex items-center gap-1.5">
                       <span className="w-1 h-3.5 bg-blue-600 rounded-full inline-block" />
                       Step Poles
                     </h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Configure up to 6 Step Poles with their respective
-                      specifications.
-                    </p>
+                    {isStandard && isModifiedFromPreset && (
+                      <button
+                        type="button"
+                        onClick={handleResetToStandard}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded transition-colors cursor-pointer"
+                        title="Revert all modified specifications back to standard preset"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Reset to Standard
+                      </button>
+                    )}
+                    {!isStandard && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Configure up to 6 Step Poles with their respective
+                        specifications.
+                      </p>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 rounded bg-gray-100 border border-gray-200 text-xs font-semibold text-gray-700">
-                      {poleForm.poles.length} / 6 Poles
-                    </span>
+                  {!isStandard && (
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded bg-gray-100 border border-gray-200 text-xs font-medium text-gray-700">
+                        {poleForm.poles.length} / 6 Poles
+                      </span>
 
-                    {!isStandard && (
                       <div className="flex items-center gap-1.5">
                         <input
                           type="number"
@@ -1141,8 +1289,8 @@ export default function StructuralPage() {
                           OK
                         </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4">
@@ -1205,11 +1353,11 @@ export default function StructuralPage() {
                       </div>
 
                       {/* Fields Grid */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 gap-2.5">
                         {/* Pole Name */}
                         <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                            Pole Name
+                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Pole Name">
+                            Pole Name <span className="text-red-500 font-semibold">*</span>
                           </label>
                           <input
                             type="text"
@@ -1219,14 +1367,14 @@ export default function StructuralPage() {
                                 name: e.target.value,
                               })
                             }
-                            className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                            className="w-full h-10 px-2.5 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                           />
                         </div>
 
                         {/* Material */}
                         <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                            Material
+                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Material">
+                            Material <span className="text-red-500 font-semibold">*</span>
                           </label>
                           <select
                             value={pole.material || "STK400"}
@@ -1235,7 +1383,7 @@ export default function StructuralPage() {
                                 material: e.target.value,
                               })
                             }
-                            className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                            className="w-full h-10 px-2 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white cursor-pointer transition-colors"
                           >
                             {MATERIAL_OPTIONS.map((m) => (
                               <option key={m.value} value={m.value}>
@@ -1247,8 +1395,8 @@ export default function StructuralPage() {
 
                         {/* Pole Type */}
                         <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                            Pole Type
+                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Pole Type">
+                            Pole Type <span className="text-red-500 font-semibold">*</span>
                           </label>
                           <select
                             value={pole.poleType || "Straight"}
@@ -1257,7 +1405,7 @@ export default function StructuralPage() {
                                 poleType: e.target.value,
                               })
                             }
-                            className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                            className="w-full h-10 px-2 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white cursor-pointer transition-colors"
                           >
                             <option value="Straight">Straight</option>
                             <option value="Taper">Taper</option>
@@ -1266,8 +1414,8 @@ export default function StructuralPage() {
 
                         {/* Lower Diameter */}
                         <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                            Lower Diameter
+                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Lower Diameter">
+                            Lower Diameter <span className="text-red-500 font-semibold">*</span>
                           </label>
                           <div className="relative">
                             <input
@@ -1278,9 +1426,9 @@ export default function StructuralPage() {
                                   lowerDiameter: e.target.value,
                                 })
                               }
-                              className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                               mm
                             </span>
                           </div>
@@ -1288,8 +1436,8 @@ export default function StructuralPage() {
 
                         {/* Upper Diameter */}
                         <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                            Upper Diameter
+                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Upper Diameter">
+                            Upper Diameter <span className="text-red-500 font-semibold">*</span>
                           </label>
                           <div className="relative">
                             <input
@@ -1300,9 +1448,9 @@ export default function StructuralPage() {
                                   upperDiameter: e.target.value,
                                 })
                               }
-                              className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                               mm
                             </span>
                           </div>
@@ -1310,8 +1458,8 @@ export default function StructuralPage() {
 
                         {/* Lower Thickness */}
                         <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                            Lower Thickness
+                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Lower Thickness">
+                            Lower Thickness <span className="text-red-500 font-semibold">*</span>
                           </label>
                           <div className="relative">
                             <input
@@ -1323,9 +1471,9 @@ export default function StructuralPage() {
                                   lowerThickness: e.target.value,
                                 })
                               }
-                              className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                               mm
                             </span>
                           </div>
@@ -1333,8 +1481,8 @@ export default function StructuralPage() {
 
                         {/* Upper Thickness */}
                         <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                            Upper Thickness
+                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Upper Thickness">
+                            Upper Thickness <span className="text-red-500 font-semibold">*</span>
                           </label>
                           <div className="relative">
                             <input
@@ -1346,9 +1494,9 @@ export default function StructuralPage() {
                                   upperThickness: e.target.value,
                                 })
                               }
-                              className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                               mm
                             </span>
                           </div>
@@ -1356,8 +1504,8 @@ export default function StructuralPage() {
 
                         {/* Height */}
                         <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                            Height
+                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Height">
+                            Height <span className="text-red-500 font-semibold">*</span>
                           </label>
                           <div className="relative">
                             <input
@@ -1368,9 +1516,9 @@ export default function StructuralPage() {
                                   zHeight: e.target.value,
                                 })
                               }
-                              className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                               mm
                             </span>
                           </div>
@@ -1378,8 +1526,8 @@ export default function StructuralPage() {
 
                         {/* Quantity */}
                         <div>
-                          <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                            Quantity
+                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
+                            Quantity <span className="text-red-500 font-semibold">*</span>
                           </label>
                           <div className="relative">
                             <input
@@ -1391,9 +1539,9 @@ export default function StructuralPage() {
                                   quantity: e.target.value,
                                 })
                               }
-                              className="w-full pl-2 pr-8 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
-                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                               pcs
                             </span>
                           </div>
@@ -1445,18 +1593,20 @@ export default function StructuralPage() {
                       <span className="w-1 h-3.5 bg-blue-600 rounded-full inline-block" />
                       Direct Objects
                     </h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Configure up to 10 Direct Objects with their respective
-                      specifications.
-                    </p>
+                    {!isStandard && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Configure up to 10 Direct Objects with their respective
+                        specifications.
+                      </p>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 rounded bg-gray-100 border border-gray-200 text-xs font-semibold text-gray-700">
-                      {doForm.directObjects.length} / 10 Objects
-                    </span>
+                  {!isStandard && (
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded bg-gray-100 border border-gray-200 text-xs font-medium text-gray-700">
+                        {doForm.directObjects.length} / 10 Objects
+                      </span>
 
-                    {!isStandard && (
                       <div className="flex items-center gap-1.5">
                         <input
                           type="number"
@@ -1475,8 +1625,8 @@ export default function StructuralPage() {
                           OK
                         </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {doForm.directObjects.length === 0 ? (
@@ -1543,11 +1693,16 @@ export default function StructuralPage() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                        <div
+                          className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${obj.type === "directional"
+                            ? "xl:grid-cols-9"
+                            : "xl:grid-cols-7"
+                            } gap-2.5`}
+                        >
                           {/* Object Name */}
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Object Name
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Name">
+                              Object Name <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <input
                               type="text"
@@ -1557,14 +1712,14 @@ export default function StructuralPage() {
                                   name: e.target.value,
                                 })
                               }
-                              className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 px-2.5 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
                           </div>
 
                           {/* Object Type */}
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Object Type
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Type">
+                              Object Type <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <select
                               value={obj.type || "omni"}
@@ -1573,7 +1728,7 @@ export default function StructuralPage() {
                                   type: e.target.value,
                                 })
                               }
-                              className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 px-2 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white cursor-pointer transition-colors"
                             >
                               {OBJECT_TYPE_OPTIONS.map((opt) => (
                                 <option key={opt.value} value={opt.value}>
@@ -1585,8 +1740,8 @@ export default function StructuralPage() {
 
                           {/* Front Area */}
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Front Area
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Front Area">
+                              Front Area <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -1598,19 +1753,19 @@ export default function StructuralPage() {
                                     frontArea: e.target.value,
                                   })
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 m²
                               </span>
                             </div>
                           </div>
 
-                          {/* Side Area */}
+                          {/* Side Area - only if Directional */}
                           {obj.type === "directional" && (
                             <div>
-                              <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                                Side Area
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Side Area">
+                                Side Area <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
                                 <input
@@ -1622,9 +1777,9 @@ export default function StructuralPage() {
                                       sideArea: e.target.value,
                                     })
                                   }
-                                  className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                  className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                                 />
-                                <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   m²
                                 </span>
                               </div>
@@ -1633,8 +1788,8 @@ export default function StructuralPage() {
 
                           {/* Weight */}
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Weight
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Weight">
+                              Weight <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -1646,9 +1801,9 @@ export default function StructuralPage() {
                                     weight: e.target.value,
                                   })
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 kg
                               </span>
                             </div>
@@ -1656,8 +1811,8 @@ export default function StructuralPage() {
 
                           {/* Height */}
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Height
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Height">
+                              Height <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -1668,9 +1823,9 @@ export default function StructuralPage() {
                                     zHeight: e.target.value,
                                   })
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 mm
                               </span>
                             </div>
@@ -1678,8 +1833,8 @@ export default function StructuralPage() {
 
                           {/* nnC */}
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              nnC
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
+                              nnC <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <input
                               type="number"
@@ -1690,14 +1845,14 @@ export default function StructuralPage() {
                                   nnC: e.target.value,
                                 })
                               }
-                              className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 px-2.5 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
                           </div>
 
                           {/* Quantity */}
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Quantity
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
+                              Quantity <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -1709,13 +1864,37 @@ export default function StructuralPage() {
                                     quantity: e.target.value,
                                   })
                                 }
-                                className="w-full pl-2 pr-8 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 pcs
                               </span>
                             </div>
                           </div>
+
+                          {/* Fix Angle - only if Directional */}
+                          {obj.type === "directional" && (
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Fix Angle">
+                                Fix Angle <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  value={obj.fixAngle || "0"}
+                                  onChange={(e) =>
+                                    doForm.updateDo(obj.idDo || String(idx + 1), {
+                                      fixAngle: e.target.value,
+                                    })
+                                  }
+                                  className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  deg
+                                </span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -1771,7 +1950,7 @@ export default function StructuralPage() {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 rounded bg-gray-100 border border-gray-200 text-xs font-semibold text-gray-700">
+                    <span className="px-3 py-1 rounded bg-gray-100 border border-gray-200 text-xs font-medium text-gray-700">
                       {ohwForm.overheadWires.length} / 4 Overhead Wires
                     </span>
 
@@ -1844,140 +2023,208 @@ export default function StructuralPage() {
                             >
                               Reset
                             </button>
-                            {!isStandard && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteOhw(idx)}
-                                className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOhw(idx)}
+                              className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                            >
+                              Delete
+                            </button>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                          <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Wire Name
-                            </label>
-                            <input
-                              type="text"
-                              value={wire.name || ""}
-                              onChange={(e) =>
-                                ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
-                                  name: e.target.value,
-                                })
-                              }
-                              className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
-                            />
+                        <div className="space-y-3">
+                          {/* Row 1: Overhead Wire Name, Weight, Diameter, Height */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                                Overhead Wire Name <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g., DV2.6-2C"
+                                value={wire.name || ""}
+                                onChange={(e) =>
+                                  ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
+                                    name: e.target.value,
+                                  })
+                                }
+                                className="w-full h-10 px-2.5 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                                Weight <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={wire.weight || ""}
+                                  onChange={(e) =>
+                                    ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
+                                      weight: e.target.value,
+                                    })
+                                  }
+                                  className="w-full h-10 pl-2.5 pr-12 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  kg/m
+                                </span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                                Diameter <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={wire.diameter || ""}
+                                  onChange={(e) =>
+                                    ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
+                                      diameter: e.target.value,
+                                    })
+                                  }
+                                  className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                                Height <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={wire.zHeight || ""}
+                                  onChange={(e) =>
+                                    ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
+                                      zHeight: e.target.value,
+                                    })
+                                  }
+                                  className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
+                              </div>
+                            </div>
                           </div>
 
-                          <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Wire Diameter
-                            </label>
-                            <div className="relative">
+                          {/* Row 2: Span, Sagging Ratio, nnC, Fix Angle, Vertical Angle */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                                Span <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={wire.span || ""}
+                                  onChange={(e) =>
+                                    ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
+                                      span: e.target.value,
+                                    })
+                                  }
+                                  className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                                Sagging Ratio <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={wire.saggingRatio || ""}
+                                  onChange={(e) =>
+                                    ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
+                                      saggingRatio: e.target.value,
+                                    })
+                                  }
+                                  className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  %
+                                </span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                                nnC <span className="text-red-500 font-semibold">*</span>
+                              </label>
                               <input
                                 type="number"
                                 step="any"
-                                value={wire.diameter || ""}
+                                value={wire.nnC ?? "1"}
                                 onChange={(e) =>
                                   ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
-                                    diameter: e.target.value,
+                                    nnC: e.target.value,
                                   })
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 px-2.5 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
-                                mm
-                              </span>
                             </div>
-                          </div>
 
-                          <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Wire Tension
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                step="any"
-                                value={wire.tension || ""}
-                                onChange={(e) =>
-                                  ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
-                                    tension: e.target.value,
-                                  })
-                                }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
-                                N
-                              </span>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                                Fix Angle <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={wire.fixAngle ?? "0"}
+                                  onChange={(e) =>
+                                    ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
+                                      fixAngle: e.target.value,
+                                    })
+                                  }
+                                  className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  deg
+                                </span>
+                              </div>
                             </div>
-                          </div>
 
-                          <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Angle
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                value={wire.angle || "0"}
-                                onChange={(e) =>
-                                  ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
-                                    angle: e.target.value,
-                                  })
-                                }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
-                                deg
-                              </span>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Height
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                value={wire.zHeight || ""}
-                                onChange={(e) =>
-                                  ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
-                                    zHeight: e.target.value,
-                                  })
-                                }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
-                                mm
-                              </span>
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Quantity
-                            </label>
-                            <div className="relative">
-                              <input
-                                type="number"
-                                min="1"
-                                value={wire.quantity || "1"}
-                                onChange={(e) =>
-                                  ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
-                                    quantity: e.target.value,
-                                  })
-                                }
-                                className="w-full pl-2 pr-8 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
-                              />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
-                                pcs
-                              </span>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                                Vertical Angle <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={wire.verticalAngle ?? "0"}
+                                  onChange={(e) =>
+                                    ohwForm.updateOhw(wire.idOhw || String(idx + 1), {
+                                      verticalAngle: e.target.value,
+                                    })
+                                  }
+                                  className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  deg
+                                </span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1987,7 +2234,7 @@ export default function StructuralPage() {
                 )}
 
                 {/* Add Overhead Wire Button */}
-                {!isStandard && ohwForm.overheadWires.length < 4 && (
+                {ohwForm.overheadWires.length < 4 && (
                   <button
                     type="button"
                     onClick={handleAddOverheadWire}
@@ -2028,17 +2275,19 @@ export default function StructuralPage() {
                       <span className="w-1 h-3.5 bg-blue-600 rounded-full inline-block" />
                       Arms
                     </h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Configure up to 10 Arms with their respective specifications.
-                    </p>
+                    {!isStandard && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Configure up to 10 Arms with their respective specifications.
+                      </p>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="px-3 py-1 rounded bg-gray-100 border border-gray-200 text-xs font-semibold text-gray-700">
-                      {armForm.arms.length} / 10 Arms
-                    </span>
+                  {!isStandard && (
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded bg-gray-100 border border-gray-200 text-xs font-medium text-gray-700">
+                        {armForm.arms.length} / 10 Arms
+                      </span>
 
-                    {!isStandard && (
                       <div className="flex items-center gap-1.5">
                         <input
                           type="number"
@@ -2057,8 +2306,8 @@ export default function StructuralPage() {
                           OK
                         </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
 
                 {armForm.arms.length === 0 ? (
@@ -2121,10 +2370,10 @@ export default function StructuralPage() {
                         </div>
 
                         {/* Arm Input Fields */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-11 gap-2.5">
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Arm Name
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Arm Name">
+                              Arm Name <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <input
                               type="text"
@@ -2132,20 +2381,20 @@ export default function StructuralPage() {
                               onChange={(e) =>
                                 handleUpdateArmField(armIdx, "name", e.target.value)
                               }
-                              className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 px-2.5 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Material
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Material">
+                              Material <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <select
                               value={arm.material || "STK400"}
                               onChange={(e) =>
                                 handleUpdateArmField(armIdx, "material", e.target.value)
                               }
-                              className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 px-2 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white cursor-pointer transition-colors"
                             >
                               {MATERIAL_OPTIONS.map((m) => (
                                 <option key={m.value} value={m.value}>
@@ -2156,8 +2405,8 @@ export default function StructuralPage() {
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Diameter
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Diameter">
+                              Diameter <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -2167,17 +2416,17 @@ export default function StructuralPage() {
                                 onChange={(e) =>
                                   handleUpdateArmField(armIdx, "diameter", e.target.value)
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 mm
                               </span>
                             </div>
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Thickness
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Thickness">
+                              Thickness <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -2187,17 +2436,17 @@ export default function StructuralPage() {
                                 onChange={(e) =>
                                   handleUpdateArmField(armIdx, "thickness", e.target.value)
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 mm
                               </span>
                             </div>
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Length
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Length">
+                              Length <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -2206,17 +2455,17 @@ export default function StructuralPage() {
                                 onChange={(e) =>
                                   handleUpdateArmField(armIdx, "length", e.target.value)
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 mm
                               </span>
                             </div>
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Exp.Length
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Exp.Length">
+                              Exp.Length <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -2225,17 +2474,17 @@ export default function StructuralPage() {
                                 onChange={(e) =>
                                   handleUpdateArmField(armIdx, "expLength", e.target.value)
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 mm
                               </span>
                             </div>
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Height
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Height">
+                              Height <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -2244,17 +2493,17 @@ export default function StructuralPage() {
                                 onChange={(e) =>
                                   handleUpdateArmField(armIdx, "height", e.target.value)
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 mm
                               </span>
                             </div>
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              H-Distance
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="H-Distance">
+                              H-Distance <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -2263,17 +2512,17 @@ export default function StructuralPage() {
                                 onChange={(e) =>
                                   handleUpdateArmField(armIdx, "hDistance", e.target.value)
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 mm
                               </span>
                             </div>
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Fix Angle
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Fix Angle">
+                              Fix Angle <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -2282,17 +2531,17 @@ export default function StructuralPage() {
                                 onChange={(e) =>
                                   handleUpdateArmField(armIdx, "fixAngle", e.target.value)
                                 }
-                                className="w-full pl-2 pr-7 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 deg
                               </span>
                             </div>
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              nnC
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
+                              nnC <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <input
                               type="number"
@@ -2301,13 +2550,13 @@ export default function StructuralPage() {
                               onChange={(e) =>
                                 handleUpdateArmField(armIdx, "nnC", e.target.value)
                               }
-                              className="w-full px-2.5 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                              className="w-full h-10 px-2.5 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                             />
                           </div>
 
                           <div>
-                            <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                              Quantity
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
+                              Quantity <span className="text-red-500 font-semibold">*</span>
                             </label>
                             <div className="relative">
                               <input
@@ -2317,9 +2566,9 @@ export default function StructuralPage() {
                                 onChange={(e) =>
                                   handleUpdateArmField(armIdx, "quantity", e.target.value)
                                 }
-                                className="w-full pl-2 pr-8 py-1.5 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                               />
-                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                 pcs
                               </span>
                             </div>
@@ -2334,17 +2583,19 @@ export default function StructuralPage() {
                                 <span className="w-1 h-3 bg-blue-500 rounded-full inline-block" />
                                 Arm Objects
                               </h4>
-                              <p className="text-[11px] text-gray-500">
-                                Configure up to 5 Arm Objects with their respective specifications.
-                              </p>
+                              {!isStandard && (
+                                <p className="text-[11px] text-gray-500">
+                                  Configure up to 5 Arm Objects with their respective specifications.
+                                </p>
+                              )}
                             </div>
 
-                            <div className="flex items-center gap-2">
-                              <span className="px-2.5 py-0.5 rounded bg-white border border-gray-200 text-[11px] font-semibold text-gray-700">
-                                {(arm.armObjects || []).length} / 5 Objects
-                              </span>
+                            {!isStandard && (
+                              <div className="flex items-center gap-2">
+                                <span className="px-2.5 py-0.5 rounded bg-white border border-gray-200 text-[11px] font-medium text-gray-700">
+                                  {(arm.armObjects || []).length} / 5 Objects
+                                </span>
 
-                              {!isStandard && (
                                 <div className="flex items-center gap-1.5">
                                   <input
                                     type="number"
@@ -2368,8 +2619,8 @@ export default function StructuralPage() {
                                     OK
                                   </button>
                                 </div>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
 
                           {(!arm.armObjects || arm.armObjects.length === 0) ? (
@@ -2433,10 +2684,15 @@ export default function StructuralPage() {
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+                                  <div
+                                    className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${ao.type === "directional"
+                                      ? "xl:grid-cols-8"
+                                      : "xl:grid-cols-7"
+                                      } gap-2.5`}
+                                  >
                                     <div>
-                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                                        Object Name
+                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Name">
+                                        Object Name <span className="text-red-500 font-semibold">*</span>
                                       </label>
                                       <input
                                         type="text"
@@ -2449,13 +2705,13 @@ export default function StructuralPage() {
                                             e.target.value,
                                           )
                                         }
-                                        className="w-full px-2 py-1 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                        className="w-full h-10 px-2.5 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                                       />
                                     </div>
 
                                     <div>
-                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                                        Object Type
+                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Type">
+                                        Object Type <span className="text-red-500 font-semibold">*</span>
                                       </label>
                                       <select
                                         value={ao.type || "omni"}
@@ -2467,7 +2723,7 @@ export default function StructuralPage() {
                                             e.target.value,
                                           )
                                         }
-                                        className="w-full px-2 py-1 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                        className="w-full h-10 px-2 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white cursor-pointer transition-colors"
                                       >
                                         {OBJECT_TYPE_OPTIONS.map((opt) => (
                                           <option key={opt.value} value={opt.value}>
@@ -2478,8 +2734,8 @@ export default function StructuralPage() {
                                     </div>
 
                                     <div>
-                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                                        Front Area
+                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Front Area">
+                                        Front Area <span className="text-red-500 font-semibold">*</span>
                                       </label>
                                       <div className="relative">
                                         <input
@@ -2494,17 +2750,45 @@ export default function StructuralPage() {
                                               e.target.value,
                                             )
                                           }
-                                          className="w-full pl-2 pr-7 py-1 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                          className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                                         />
-                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                           m²
                                         </span>
                                       </div>
                                     </div>
 
+                                    {/* Side Area - only if Directional */}
+                                    {ao.type === "directional" && (
+                                      <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Side Area">
+                                          Side Area <span className="text-red-500 font-semibold">*</span>
+                                        </label>
+                                        <div className="relative">
+                                          <input
+                                            type="number"
+                                            step="any"
+                                            value={ao.sideArea || ""}
+                                            onChange={(e) =>
+                                              handleUpdateArmObjectField(
+                                                armIdx,
+                                                aoIdx,
+                                                "sideArea",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
+                                          />
+                                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                            m²
+                                          </span>
+                                        </div>
+                                      </div>
+                                    )}
+
                                     <div>
-                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                                        Weight
+                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Weight">
+                                        Weight <span className="text-red-500 font-semibold">*</span>
                                       </label>
                                       <div className="relative">
                                         <input
@@ -2519,17 +2803,17 @@ export default function StructuralPage() {
                                               e.target.value,
                                             )
                                           }
-                                          className="w-full pl-2 pr-7 py-1 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                          className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                                         />
-                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                           kg
                                         </span>
                                       </div>
                                     </div>
 
                                     <div>
-                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                                        H-Distance
+                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="H-Distance">
+                                        H-Distance <span className="text-red-500 font-semibold">*</span>
                                       </label>
                                       <div className="relative">
                                         <input
@@ -2543,17 +2827,17 @@ export default function StructuralPage() {
                                               e.target.value,
                                             )
                                           }
-                                          className="w-full pl-2 pr-7 py-1 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                          className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                                         />
-                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                           mm
                                         </span>
                                       </div>
                                     </div>
 
                                     <div>
-                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                                        nnC
+                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
+                                        nnC <span className="text-red-500 font-semibold">*</span>
                                       </label>
                                       <input
                                         type="number"
@@ -2567,13 +2851,13 @@ export default function StructuralPage() {
                                             e.target.value,
                                           )
                                         }
-                                        className="w-full px-2 py-1 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                        className="w-full h-10 px-2.5 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                                       />
                                     </div>
 
                                     <div>
-                                      <label className="block text-[11px] font-medium text-gray-600 mb-1">
-                                        Quantity
+                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
+                                        Quantity <span className="text-red-500 font-semibold">*</span>
                                       </label>
                                       <div className="relative">
                                         <input
@@ -2588,9 +2872,9 @@ export default function StructuralPage() {
                                               e.target.value,
                                             )
                                           }
-                                          className="w-full pl-2 pr-8 py-1 rounded border border-gray-300 text-xs outline-none focus:border-gray-700 bg-white"
+                                          className="w-full h-10 pl-2.5 pr-8 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white transition-colors"
                                         />
-                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] pointer-events-none">
+                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                           pcs
                                         </span>
                                       </div>
@@ -2635,162 +2919,62 @@ export default function StructuralPage() {
         )}
       </div>
 
-      {/* ── CALCULATION RESULTS & NEXT STEP CARDS ── */}
+      {/* ── ACTION BUTTONS: Calculate Results & Generate Report Side-by-Side (Above Results Table) ── */}
+      <div className="mt-8 flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
+        <button
+          type="button"
+          onClick={calculation.calculate}
+          disabled={calculation.loading}
+          className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${calculation.loading
+            ? "bg-blue-600 text-white opacity-60 cursor-not-allowed shadow-sm"
+            : isReadyToReport
+              ? "bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 shadow-xs cursor-pointer"
+              : "bg-blue-600 hover:bg-blue-700 text-white shadow-sm cursor-pointer"
+            }`}
+        >
+          {calculation.loading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Calculating...</span>
+            </>
+          ) : (
+            <span>Calculate Results</span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleGenerateReport}
+          disabled={!isReadyToReport || report.isGeneratingReport}
+          className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 shadow-sm ${isReadyToReport && !report.isGeneratingReport
+            ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm"
+            : "bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed"
+            }`}
+          title={
+            !calculation.isCalculated
+              ? "Please calculate results first before generating report."
+              : calculation.isInputsChanged
+                ? "Inputs changed. Please recalculate first."
+                : "Generate Report"
+          }
+        >
+          {report.isGeneratingReport ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Generating Report...</span>
+            </>
+          ) : (
+            <>
+              <span>Generate Report</span>
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* ── CALCULATION RESULTS TABLE (Visible upon calculation, below action buttons) ── */}
       {calculation.isCalculated && (
         <div className="mt-8 space-y-6">
-          {/* ── NEXT STEP CARD (Matches Image 5 & 6) ── */}
-          <div className="border border-gray-300 rounded bg-white p-5 shadow-xs">
-            <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-3">
-              <div>
-                <h3 className="text-xs md:text-sm font-semibold text-gray-900 flex items-center gap-1.5">
-                  <span className="w-1 h-3.5 bg-blue-600 rounded-full inline-block" />
-                  Next Step
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Add optional steps, or continue without them.
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Calculation complete</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              {/* Option 1: Opening */}
-              <button
-                type="button"
-                onClick={() =>
-                  updateCondition({ openingEnabled: !openingEnabled })
-                }
-                className={`p-3.5 rounded border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                  openingEnabled
-                    ? "border-blue-500 bg-blue-50/50 text-blue-900"
-                    : "border-gray-200 hover:border-gray-300 text-gray-700 bg-white"
-                }`}
-              >
-                <div className="pt-0.5">
-                  {openingEnabled ? (
-                    <CheckCircle className="w-4 h-4 text-blue-600" />
-                  ) : (
-                    <Circle className="w-4 h-4 text-gray-300" />
-                  )}
-                </div>
-                <div>
-                  <div className="text-xs font-semibold">Opening</div>
-                  <div className="text-[11px] text-gray-500 mt-0.5">
-                    Add the Opening step to this calculation.
-                  </div>
-                </div>
-              </button>
-
-              {/* Option 2: Foundation */}
-              <button
-                type="button"
-                onClick={() =>
-                  updateCondition({ foundationEnabled: !foundationEnabled })
-                }
-                className={`p-3.5 rounded border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                  foundationEnabled
-                    ? "border-blue-500 bg-blue-50/50 text-blue-900"
-                    : "border-gray-200 hover:border-gray-300 text-gray-700 bg-white"
-                }`}
-              >
-                <div className="pt-0.5">
-                  {foundationEnabled ? (
-                    <CheckCircle className="w-4 h-4 text-blue-600" />
-                  ) : (
-                    <Circle className="w-4 h-4 text-gray-300" />
-                  )}
-                </div>
-                <div>
-                  <div className="text-xs font-semibold">Foundation</div>
-                  <div className="text-[11px] text-gray-500 mt-0.5">
-                    Add the Foundation step to this calculation.
-                  </div>
-                </div>
-              </button>
-            </div>
-
-            {/* Bottom Row of Next Step Card: Flow Status on Left, Buttons on Right (Side-by-side) */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-gray-100">
-              <div className="flex items-center gap-1.5 text-xs text-gray-600 flex-wrap">
-                <span className="font-medium text-gray-700">Flow</span>
-                <span className="px-2 py-0.5 rounded bg-gray-900 text-white font-medium text-[11px]">
-                  Structural
-                </span>
-                {openingEnabled && (
-                  <>
-                    <ChevronRight className="w-3 h-3 text-gray-400" />
-                    <span className="px-2 py-0.5 rounded bg-gray-900 text-white font-medium text-[11px]">
-                      Opening
-                    </span>
-                  </>
-                )}
-                {isBaseplate && (
-                  <>
-                    <ChevronRight className="w-3 h-3 text-gray-400" />
-                    <span className="px-2 py-0.5 rounded bg-gray-900 text-white font-medium text-[11px]">
-                      Baseplate
-                    </span>
-                  </>
-                )}
-                {foundationEnabled && (
-                  <>
-                    <ChevronRight className="w-3 h-3 text-gray-400" />
-                    <span className="px-2 py-0.5 rounded bg-gray-900 text-white font-medium text-[11px]">
-                      Foundation
-                    </span>
-                  </>
-                )}
-                <ChevronRight className="w-3 h-3 text-gray-400" />
-                <span className="px-2 py-0.5 rounded bg-gray-200 text-gray-700 font-medium text-[11px]">
-                  Report
-                </span>
-              </div>
-
-              {/* Side-by-side action buttons */}
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                <button
-                  type="button"
-                  onClick={calculation.calculate}
-                  disabled={calculation.loading}
-                  className="px-5 py-2 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-medium transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-60"
-                >
-                  {calculation.loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Calculating...</span>
-                    </>
-                  ) : (
-                    <span>Calculate Results</span>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleNextStep}
-                  disabled={
-                    !calculation.isCalculated ||
-                    calculation.loading ||
-                    calculation.isInputsChanged
-                  }
-                  className={`px-5 py-2 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${
-                    calculation.isCalculated &&
-                    !calculation.loading &&
-                    !calculation.isInputsChanged
-                      ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm"
-                      : "bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed"
-                  }`}
-                >
-                  <span>{nextLabel}</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Results Table View */}
           <ResultsTableView
             results={calculation.results}
             display={calculation.displayResult}
@@ -2799,43 +2983,9 @@ export default function StructuralPage() {
         </div>
       )}
 
-      {/* ── BOTTOM ACTIONS (When NOT yet calculated): Calculate & Next Side-by-Side ── */}
-      {!calculation.isCalculated && (
-        <div className="mt-6 flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
-          <button
-            type="button"
-            onClick={calculation.calculate}
-            disabled={calculation.loading}
-            className="px-6 py-2.5 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs md:text-sm font-medium transition-all shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-60"
-          >
-            {calculation.loading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Calculating...</span>
-              </>
-            ) : (
-              <span>Calculate Results</span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleNextStep}
-            disabled={true}
-            className="px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed"
-            title="Please calculate results first before proceeding to the next step."
-          >
-            <span>{nextLabel}</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
       {/* Toast Modal for feedback/notifications */}
       <ToastModal
-        open={Boolean(calculation.toast)}
-        type={calculation.toast?.type || "info"}
-        message={calculation.toast?.message || ""}
+        toast={calculation.toast}
         onClose={() => calculation.setToast(null)}
       />
     </div>
