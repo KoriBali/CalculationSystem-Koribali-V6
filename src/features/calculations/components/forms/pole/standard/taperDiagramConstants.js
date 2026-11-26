@@ -56,10 +56,10 @@ export const DIAGRAM_LABEL_LAYOUT = {
     heightGap: 7,
     positions: {
       totalHeight: { x: -3, y: 384, anchor: "vertical" },
-      upperDiameter: { x: 196.2, y: 42.05, anchor: "bottom-left" },
-      poleSpec: { x: 184.6, y: 349.4, anchor: "leader" },
-      baseDimension: { x: 65, y: 725, anchor: "vertical" },
-      lowerDiameter: { x: 173.2, y: 719, anchor: "bottom-left" },
+      upperDiameter: { x: 194.2, y: 42.05, anchor: "bottom-left" },
+      poleSpec: { x: 184.6, y: 347.4, anchor: "leader" },
+      baseDimension: { x: 61, y: 725, anchor: "vertical" },
+      lowerDiameter: { x: 173.2, y: 718, anchor: "bottom-left" },
     },
   },
   "IS.underGL": {
@@ -67,13 +67,13 @@ export const DIAGRAM_LABEL_LAYOUT = {
     heightLineX: 8,
     heightGap: 7,
     positions: {
-      totalHeight: { x: -6, y: 384, anchor: "vertical" },
-      upperDiameter: { x: 245, y: 42.5, anchor: "bottom-left" },
-      poleSpec: { x: 232.6, y: 349.3, anchor: "leader" },
-      aboveGroundHeight: { x: 46, y: 371, anchor: "vertical" },
-      baseDimension: { x: 112, y: 700.5, anchor: "vertical" },
-      lowerDiameter: { x: 221.5, y: 696, anchor: "bottom-left" },
-      underGroundDepth: { x: 46, y: 745, anchor: "vertical" },
+      totalHeight: { x: -7, y: 384, anchor: "vertical" },
+      upperDiameter: { x: 243, y: 42.5, anchor: "bottom-left" },
+      poleSpec: { x: 232.6, y: 347.3, anchor: "leader" },
+      aboveGroundHeight: { x: 45, y: 371, anchor: "vertical" },
+      baseDimension: { x: 110, y: 700, anchor: "vertical" },
+      lowerDiameter: { x: 221.5, y: 695, anchor: "bottom-left" },
+      underGroundDepth: { x: 45, y: 741.5, anchor: "vertical" },
     },
   },
   "IA.onGL": {
@@ -81,16 +81,16 @@ export const DIAGRAM_LABEL_LAYOUT = {
     heightLineX: 7.75,
     heightGap: 7,
     positions: {
-      totalHeight: { x: -6.5, y: 384, anchor: "vertical" },
-      diameter1: { x: 251.75, y: 41.55, anchor: "bottom-left" },
-      diameter2: { x: 251.75, y: 181.05, anchor: "bottom-left" },
-      poleSpec: { x: 240.15, y: 349.3, anchor: "leader" },
-      diameter3: { x: 228.25, y: 585, anchor: "bottom-left" },
-      diameter4: { x: 228.25, y: 720.05, anchor: "bottom-left" },
-      topSectionLength: { x: 48.25, y: 77.05, anchor: "vertical" },
-      taperSectionLength: { x: 48.25, y: 384.55, anchor: "vertical" },
-      bottomSectionLength: { x: 48.25, y: 692.05, anchor: "vertical" },
-      baseDimension: { x: 118.5, y: 726.55, anchor: "vertical" },
+      totalHeight: { x: -7.5, y: 384, anchor: "vertical" },
+      diameter1: { x: 248.75, y: 42.5, anchor: "bottom-left" },
+      diameter2: { x: 248.75, y: 181.05, anchor: "bottom-left" },
+      poleSpec: { x: 240.15, y: 346.3, anchor: "leader" },
+      diameter3: { x: 228.25, y: 584, anchor: "bottom-left" },
+      diameter4: { x: 228.25, y: 719.05, anchor: "bottom-left" },
+      topSectionLength: { x: 46.25, y: 77.05, anchor: "vertical" },
+      taperSectionLength: { x: 46.25, y: 384.55, anchor: "vertical" },
+      bottomSectionLength: { x: 46.25, y: 692.05, anchor: "vertical" },
+      baseDimension: { x: 116.5, y: 726.55, anchor: "vertical" },
     },
   },
   "IA.underGL": {
@@ -100,16 +100,16 @@ export const DIAGRAM_LABEL_LAYOUT = {
     textsFromOnGL: true,
     positions: {
       totalHeight: { x: -6, y: 384, anchor: "vertical" },
-      diameter1: { x: 246, y: 42.5, anchor: "bottom-left" },
-      diameter2: { x: 246, y: 181.5, anchor: "bottom-left" },
-      poleSpec: { x: 234, y: 350.3, anchor: "leader" },
-      diameter3: { x: 223.5, y: 559.5, anchor: "bottom-left" },
-      diameter4: { x: 223.5, y: 696.5, anchor: "bottom-left" },
-      topSectionLength: { x: 48.5, y: 77.2, anchor: "vertical" },
-      taperSectionLength: { x: 48.5, y: 372.2, anchor: "vertical" },
-      bottomSectionLength: { x: 48.5, y: 667.2, anchor: "vertical" },
-      underGroundDepth: { x: 48.5, y: 746.5, anchor: "vertical" },
-      baseDimension: { x: 114, y: 701.7, anchor: "vertical" },
+      diameter1: { x: 244, y: 43.5, anchor: "bottom-left" },
+      diameter2: { x: 244, y: 181.5, anchor: "bottom-left" },
+      poleSpec: { x: 234, y: 348.3, anchor: "leader" },
+      diameter3: { x: 223.5, y: 558.5, anchor: "bottom-left" },
+      diameter4: { x: 223.5, y: 696, anchor: "bottom-left" },
+      topSectionLength: { x: 46.5, y: 77.2, anchor: "vertical" },
+      taperSectionLength: { x: 46.5, y: 372.2, anchor: "vertical" },
+      bottomSectionLength: { x: 46.5, y: 667.2, anchor: "vertical" },
+      underGroundDepth: { x: 46.5, y: 742.5, anchor: "vertical" },
+      baseDimension: { x: 110, y: 701.7, anchor: "vertical" },
     },
   },
   "LS.onGL": {
@@ -171,21 +171,21 @@ export const DIAGRAM_LABEL_LAYOUT = {
     heightLineX: 8.05,
     textsFromOnGL: true,
     positions: {
-      totalHeight: { x: -6, y: 480.1, anchor: "vertical" },
+      totalHeight: { x: -7, y: 480.1, anchor: "vertical" },
       armTopDimension: { x: 226, y: 5.35, anchor: "bottom-center" },
       armLength: { x: 193, y: 38.35, anchor: "bottom-right" },
-      diameter1: { x: 283.5, y: 54.5, anchor: "bottom-left" },
-      armSpec: { x: 256, y: 142, anchor: "leader", centered: true },
-      diameter2: { x: 254, y: 280.6, anchor: "bottom-left" },
-      poleSpec: { x: 238.5, y: 446.1, anchor: "leader" },
-      diameter3: { x: 262, y: 660.1, anchor: "bottom-left" },
-      diameter4: { x: 262, y: 797.1, anchor: "bottom-left" },
-      poleTopOffset: { x: 47.7, y: 84.2, anchor: "vertical" },
-      topSectionLength: { x: 47.7, y: 177.6, anchor: "vertical" },
-      taperSectionLength: { x: 47.7, y: 468.1, anchor: "vertical" },
-      bottomSectionLength: { x: 47.7, y: 762.1, anchor: "vertical" },
-      underGroundDepth: { x: 47.7, y: 843.6, anchor: "vertical" },
-      baseDimension: { x: 115, y: 796.6, anchor: "vertical" },
+      diameter1: { x: 280, y: 53, anchor: "bottom-left" },
+      armSpec: { x: 256, y: 140, anchor: "leader", centered: true },
+      diameter2: { x: 245, y: 278.6, anchor: "bottom-left" },
+      poleSpec: { x: 238.5, y: 442.1, anchor: "leader" },
+      diameter3: { x: 228, y: 656.1, anchor: "bottom-left" },
+      diameter4: { x: 228, y: 793.1, anchor: "bottom-left" },
+      poleTopOffset: { x: 43.7, y: 82.2, anchor: "vertical" },
+      topSectionLength: { x: 43.7, y: 177.6, anchor: "vertical" },
+      taperSectionLength: { x: 43.7, y: 468.1, anchor: "vertical" },
+      bottomSectionLength: { x: 43.7, y: 762.1, anchor: "vertical" },
+      underGroundDepth: { x: 43.7, y: 837.6, anchor: "vertical" },
+      baseDimension: { x: 112, y: 796.6, anchor: "vertical" },
     },
   },
   "TS.onGL": {
@@ -277,10 +277,10 @@ export const DIAGRAM_LABEL_LAYOUT = {
     heightLineX: 11.7,
     heightGap: 7,
     positions: {
-      totalHeight: { x: -3, y: 384, anchor: "vertical" },
-      upperDiameter: { x: 184.5, y: 74.05, anchor: "bottom-left" },
-      poleSpec: { x: 180.6, y: 353.3, anchor: "leader" },
-      baseDimension: { x: 65.5, y: 594.55, anchor: "vertical" },
+      totalHeight: { x: -4, y: 384, anchor: "vertical" },
+      upperDiameter: { x: 182.5, y: 74.05, anchor: "bottom-left" },
+      poleSpec: { x: 180.6, y: 351.3, anchor: "leader" },
+      baseDimension: { x: 63.5, y: 594.55, anchor: "vertical" },
       lowerDiameter: { x: 166.2, y: 583.4, anchor: "bottom-left" },
     },
   },
@@ -289,16 +289,16 @@ export const DIAGRAM_LABEL_LAYOUT = {
     heightLineX: 7.75,
     heightGap: 7,
     positions: {
-      totalHeight: { x: -6.5, y: 384, anchor: "vertical" },
-      diameter1: { x: 237.75, y: 68.55, anchor: "bottom-left" },
-      diameter2: { x: 237.75, y: 180.05, anchor: "bottom-left" },
+      totalHeight: { x: -7, y: 384, anchor: "vertical" },
+      diameter1: { x: 235.75, y: 70, anchor: "bottom-left" },
+      diameter2: { x: 235.75, y: 190, anchor: "bottom-left" },
       poleSpec: { x: 227.15, y: 349.3, anchor: "leader" },
-      diameter3: { x: 215.25, y: 475, anchor: "bottom-left" },
-      diameter4: { x: 215.25, y: 588.05, anchor: "bottom-left" },
-      topSectionLength: { x: 49, y: 120.05, anchor: "vertical" },
-      taperSectionLength: { x: 49, y: 340, anchor: "vertical" },
-      bottomSectionLength: { x: 49, y: 566, anchor: "vertical" },
-      baseDimension: { x: 116.5, y: 599, anchor: "vertical" },
+      diameter3: { x: 216.25, y: 470, anchor: "bottom-left" },
+      diameter4: { x: 216.25, y: 588.5, anchor: "bottom-left" },
+      topSectionLength: { x: 45.5, y: 108.05, anchor: "vertical" },
+      taperSectionLength: { x: 45.5, y: 340, anchor: "vertical" },
+      bottomSectionLength: { x: 45.5, y: 566, anchor: "vertical" },
+      baseDimension: { x: 114.5, y: 599, anchor: "vertical" },
     },
   },
   "LS.embedment": {
@@ -321,20 +321,20 @@ export const DIAGRAM_LABEL_LAYOUT = {
     viewBox: { width: 408, height: 879 },
     heightLineX: 7.9,
     positions: {
-      totalHeight: { x: -6, y: 428.3, anchor: "vertical" },
+      totalHeight: { x: -8, y: 428.3, anchor: "vertical" },
       armTopDimension: { x: 235.9, y: 5.5, anchor: "bottom-center" },
       armLength: { x: 206, y: 38.5, anchor: "bottom-right" },
-      diameter1: { x: 304, y: 55, anchor: "bottom-left" },
-      armSpec: { x: 268, y: 141.5, anchor: "leader", centered: true },
-      diameter2: { x: 269, y: 274.8, anchor: "bottom-left" },
-      poleSpec: { x: 252, y: 453.3, anchor: "leader" },
-      diameter3: { x: 275, y: 586.3, anchor: "bottom-left" },
-      diameter4: { x: 275, y: 717.3, anchor: "bottom-left" },
-      poleTopOffset: { x: 54.5, y: 84, anchor: "vertical" },
-      topSectionLength: { x: 54.5, y: 174.8, anchor: "vertical" },
-      taperSectionLength: { x: 54.5, y: 428.3, anchor: "vertical" },
-      bottomSectionLength: { x: 54.5, y: 685.3, anchor: "vertical" },
-      baseDimension: { x: 127, y: 720, anchor: "vertical" },
+      diameter1: { x: 295, y: 55, anchor: "bottom-left" },
+      armSpec: { x: 268, y: 136.5, anchor: "leader", centered: true },
+      diameter2: { x: 258, y: 272.8, anchor: "bottom-left" },
+      poleSpec: { x: 252, y: 449.3, anchor: "leader" },
+      diameter3: { x: 242, y: 581.3, anchor: "bottom-left" },
+      diameter4: { x: 242, y: 712.3, anchor: "bottom-left" },
+      poleTopOffset: { x: 50.5, y: 84, anchor: "vertical" },
+      topSectionLength: { x: 50.5, y: 174.8, anchor: "vertical" },
+      taperSectionLength: { x: 50.5, y: 428.3, anchor: "vertical" },
+      bottomSectionLength: { x: 50.5, y: 685.3, anchor: "vertical" },
+      baseDimension: { x: 127, y: 721, anchor: "vertical" },
     },
   },
   "TS.embedment": {
@@ -396,7 +396,12 @@ export const toMm = (val) => {
   return num < 50 ? Math.round(num * 1000) : Math.round(num);
 };
 
-export function getDiagramLabels(poleType, groundPosition, height, beGeometry = null) {
+export function getDiagramLabels(
+  poleType,
+  groundPosition,
+  height,
+  beGeometry = null,
+) {
   if (!height || !poleType) return null;
   const lookupKey = `${poleType}.${groundPosition}`;
   const layout = DIAGRAM_LABEL_LAYOUT[lookupKey];
@@ -404,14 +409,14 @@ export function getDiagramLabels(poleType, groundPosition, height, beGeometry = 
 
   const numH = Number(height);
   const mH = numH > 100 ? numH / 1000 : numH;
-  const isUnderGL = groundPosition === "underGL" || groundPosition === "under_gl";
+  const isUnderGL =
+    groundPosition === "underGL" || groundPosition === "under_gl";
   const isEmbedment = groundPosition === "embedment";
 
   const dataGround =
-    layout.textsFromOnGL || isEmbedment
-      ? "onGL"
-      : groundPosition;
-  const dataTaper = STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
+    layout.textsFromOnGL || isEmbedment ? "onGL" : groundPosition;
+  const dataTaper =
+    STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
   const group = dataTaper?.[poleType]?.[dataGround] || {};
 
   let nominalM = mH;
