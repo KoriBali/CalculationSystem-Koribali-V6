@@ -770,6 +770,8 @@ export const calculateEvaluatedPositionsM = ({
   poleStandardType = "",
   poles = [],
   lowestHeight = 0,
+  groundPosition = "on_gl",
+  isEmbedment = false,
 }) => {
   const lowestHeightM = toMeters(lowestHeight);
 
@@ -780,12 +782,37 @@ export const calculateEvaluatedPositionsM = ({
     const isMultiStep =
       typeCode === "IA" || typeCode === "LA" || typeCode === "TA";
 
-    // Standard Type IS, LS, TS: selalu 0
+    const embed =
+      isEmbedment ||
+      groundPosition === "embedment" ||
+      groundPosition === "embed";
+
+    // Mode Standard Embedment:
+    // - IS, LS, TS embed: ambil dari nilai lowest height
+    // - IA, LA, TA embed: ambil nilai dari height pole ke-2 dan nilai lowest height
+    if (embed) {
+      if (isSingleStep) {
+        return [lowestHeightM];
+      }
+      if (isMultiStep) {
+        const pole2HeightM =
+          poles.length > 1 ? toMeters(poles[1]?.zHeight ?? poles[1]?.height) : 0;
+        return [pole2HeightM, lowestHeightM];
+      }
+      if (poles.length > 1) {
+        const pole2HeightM = toMeters(poles[1]?.zHeight ?? poles[1]?.height);
+        return [pole2HeightM, lowestHeightM];
+      }
+      return [lowestHeightM];
+    }
+
+    // Mode Standard On GL atau Under GL:
+    // - Standard Type IS, LS, TS: selalu 0
     if (isSingleStep) {
       return [0];
     }
 
-    // Standard Type IA, LA, TA: tinggi pole ke-2 dan nilai 0
+    // - Standard Type IA, LA, TA: tinggi pole ke-2 dan nilai 0
     if (isMultiStep) {
       const pole2HeightM =
         poles.length > 1 ? toMeters(poles[1]?.zHeight ?? poles[1]?.height) : 0;

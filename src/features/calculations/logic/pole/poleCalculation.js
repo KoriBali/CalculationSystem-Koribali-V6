@@ -178,12 +178,19 @@ export async function executePoleCalculation({
       ? poleConfig.lowestHeight
       : "0";
 
+  const isEmbedment =
+    isStandard &&
+    (taperPoleStandard?.groundPosition === "embedment" ||
+      taperPoleStandard?.installationPole === "embedment" ||
+      condition?.groundPosition === "embedment" ||
+      condition?.installationPole === "embedment");
+
   const isUnderGL =
     isStandard &&
-    ((taperPoleStandard?.groundPosition === "underGL" ||
+    !isEmbedment &&
+    (taperPoleStandard?.groundPosition === "underGL" ||
       taperPoleStandard?.groundPosition === "under_gl" ||
-      condition?.groundPosition === "under_gl") ||
-      Number(lowestHeight) < 0);
+      condition?.groundPosition === "under_gl");
 
   // Kode tipe tiang standard (misal: "IS", "IA", "LS", "LA", "TS", "TA")
   // Hanya berlaku untuk mode standard
@@ -223,11 +230,20 @@ export async function executePoleCalculation({
     }
   }
 
+  const groundPosition = isEmbedment
+    ? "embedment"
+    : isUnderGL
+      ? "under_gl"
+      : "on_gl";
+
   // Hitung evaluatedPositionsM berdasarkan spesifikasi:
-  // 1. Standard:
+  // 1. Standard Embedment:
+  //    - IS, LS, TS => [lowestHeightM]
+  //    - IA, LA, TA => [heightPole2M, lowestHeightM]
+  // 2. Standard On GL / Under GL:
   //    - IS, LS, TS => [0]
   //    - IA, LA, TA => [heightPole2M, 0]
-  // 2. Custom:
+  // 3. Custom:
   //    - 1 pole => [lowestHeightM]
   //    - >1 poles => [heightPole2M, heightPole3M, ..., lowestHeightM]
   const evaluatedPositionsM = calculateEvaluatedPositionsM({
@@ -235,6 +251,8 @@ export async function executePoleCalculation({
     poleStandardType,
     poles,
     lowestHeight,
+    groundPosition,
+    isEmbedment,
   });
 
   const std = String(condition?.designStandard || condition?.standard || "").toLowerCase();
@@ -254,18 +272,10 @@ export async function executePoleCalculation({
   const calcOverheadWires = mapCalculationOverheadWires(overheadWires);
   const calcArms = mapCalculationArms(arms, materialsList, isOldJil);
 
-  const groundPosition =
-    isStandard && taperPoleStandard?.installationPole === "embedment"
-      ? "embedment"
-      : isUnderGL
-        ? "under_gl"
-        : "on_gl";
-
   const embedmentLengthMm =
-    isStandard &&
-    taperPoleStandard?.installationPole === "embedment" &&
-    taperPoleStandard?.embedmentLength
-      ? Number(taperPoleStandard.embedmentLength)
+    isEmbedment &&
+    (taperPoleStandard?.embedmentLength || poleConfig?.embedmentLength)
+      ? Number(taperPoleStandard?.embedmentLength || poleConfig?.embedmentLength)
       : null;
 
   // ── 1.A. JIKA DALAM KONTEKS CALCULATION CASE (Standard maupun Custom) ──
@@ -276,6 +286,7 @@ export async function executePoleCalculation({
         stepPoles: calcStepPoles,
         evaluatedPositionsM,
         evaluatedPositionM: evaluatedPositionsM,
+        evaluationHeightM: evaluatedPositionsM,
         directObjects: calcDirectObjects,
         overheadWires: calcOverheadWires,
         arms: calcArms,
@@ -330,6 +341,7 @@ export async function executePoleCalculation({
         stepPoles: calcStepPoles,
         evaluatedPositionsM,
         evaluatedPositionM: evaluatedPositionsM,
+        evaluationHeightM: evaluatedPositionsM,
         directObjects: calcDirectObjects,
         overheadWires: calcOverheadWires,
         arms: calcArms,
@@ -371,6 +383,7 @@ export async function executePoleCalculation({
     stepPoles: calcStepPoles,
     evaluatedPositionsM,
     evaluatedPositionM: evaluatedPositionsM,
+    evaluationHeightM: evaluatedPositionsM,
     groundPosition,
     ...(isStandard && embedmentLengthMm !== null ? { embedmentLengthMm } : {}),
   };

@@ -33,31 +33,25 @@ const resolveData = ({
 
   if (type === "taper" || type === "tapered") {
     const isEmbedment =
+      condition?.installationPole === "embedment" ||
+      condition?.groundPosition === "embedment" ||
       taperPoleStandard?.installationPole === "embedment" ||
-      condition?.installationPole === "embedment";
+      taperPoleStandard?.groundPosition === "embedment";
 
-    // In Embedment mode the height dropdown shows the plain onGL-style
-    // values (the +0.3m embedment allowance is entered separately via
-    // Embedment Length) — but specStandardPole.json's underGL entries are
-    // still keyed by the elongated height (e.g. "8.3"), since that's a
-    // physically longer pole with different structural data. Translate
-    // back to that key only for this lookup.
+    const isUnderGL =
+      !isEmbedment &&
+      (taperPoleStandard?.groundPosition === "underGL" ||
+        taperPoleStandard?.groundPosition === "under_gl" ||
+        condition?.groundPosition === "under_gl");
+
     const rawH = Number(taperPoleStandard.height);
     const mHeight = rawH > 100 ? rawH / 1000 : rawH;
-    const heightKey = isEmbedment
+    const heightKey = isUnderGL
       ? (mHeight + 0.3).toFixed(1)
       : String(Math.round(mHeight * 10) / 10);
 
     const dataTaper = STANDARD_POLE_DATA?.tapered || STANDARD_POLE_DATA?.taper;
-    const rawGroundPos =
-      taperPoleStandard?.groundPosition || condition?.groundPosition || "onGL";
-    const normalizedGroundPos =
-      isEmbedment ||
-      rawGroundPos === "embedment" ||
-      rawGroundPos === "under_gl" ||
-      rawGroundPos === "underGL"
-        ? "underGL"
-        : "onGL";
+    const normalizedGroundPos = isUnderGL ? "underGL" : "onGL";
     const group =
       dataTaper?.[taperPoleStandard.poleType]?.[normalizedGroundPos] || {};
     const isTypeWith100 =
@@ -82,8 +76,16 @@ const resolveData = ({
       return { error: "Standard taper pole data not found.", ...empty };
 
     if (isEmbedment) {
-      if (!taperPoleStandard.embedmentLength) {
-        return { error: "Please complete the embedment length.", ...empty };
+      const embLen =
+        taperPoleStandard?.embedmentLength ||
+        poleConfig?.embedmentLength;
+      if (!embLen || isNaN(Number(embLen)) || Number(embLen) <= 0) {
+        return {
+          error: "Embedment Length is required.",
+          poleConfigErrors: { embedmentLength: "Embedment length is required" },
+          taperPoleStandardErrors: { embedmentLength: "Embedment length is required" },
+          ...empty,
+        };
       }
     }
 
@@ -535,9 +537,21 @@ export async function validatePoleForm({
     }
   }
 
+  const sanitizedPoles = (resolved.poles || []).map((p) => {
+    const isStr = (p.poleType || p.type || "Straight").toLowerCase() === "straight";
+    if (isStr) {
+      return {
+        ...p,
+        upperDiameter: p.lowerDiameter ?? p.upperDiameter,
+        upperThickness: p.lowerThickness ?? p.upperThickness,
+      };
+    }
+    return p;
+  });
+
   return {
     isValid: true,
-    resolvedPoles: resolved.poles,
+    resolvedPoles: sanitizedPoles,
     resolvedDirectObjects: resolved.directObjects,
     resolvedOverheadWires: resolved.overheadWires,
     resolvedArms: resolved.arms,

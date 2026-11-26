@@ -171,21 +171,21 @@ export const DIAGRAM_LABEL_LAYOUT = {
     heightLineX: 8.05,
     textsFromOnGL: true,
     positions: {
-      totalHeight: { x: -6, y: 472, anchor: "vertical" },
+      totalHeight: { x: -6, y: 480.1, anchor: "vertical" },
       armTopDimension: { x: 226, y: 5.35, anchor: "bottom-center" },
       armLength: { x: 193, y: 38.35, anchor: "bottom-right" },
       diameter1: { x: 283.5, y: 54.5, anchor: "bottom-left" },
       armSpec: { x: 256, y: 142, anchor: "leader", centered: true },
-      diameter2: { x: 247.7, y: 307, anchor: "bottom-left" },
-      poleSpec: { x: 238.5, y: 449.4, anchor: "leader" },
-      diameter3: { x: 226, y: 680, anchor: "bottom-left" },
-      diameter4: { x: 226, y: 815, anchor: "bottom-left" },
+      diameter2: { x: 254, y: 280.6, anchor: "bottom-left" },
+      poleSpec: { x: 238.5, y: 446.1, anchor: "leader" },
+      diameter3: { x: 262, y: 660.1, anchor: "bottom-left" },
+      diameter4: { x: 262, y: 797.1, anchor: "bottom-left" },
       poleTopOffset: { x: 47.7, y: 84.2, anchor: "vertical" },
-      topSectionLength: { x: 47.7, y: 193.35, anchor: "vertical" },
-      taperSectionLength: { x: 47.7, y: 495.85, anchor: "vertical" },
-      bottomSectionLength: { x: 47.7, y: 788.34, anchor: "vertical" },
-      underGroundDepth: { x: 47.7, y: 840.8, anchor: "vertical" },
-      baseDimension: { x: 115, y: 822.85, anchor: "vertical" },
+      topSectionLength: { x: 47.7, y: 177.6, anchor: "vertical" },
+      taperSectionLength: { x: 47.7, y: 468.1, anchor: "vertical" },
+      bottomSectionLength: { x: 47.7, y: 762.1, anchor: "vertical" },
+      underGroundDepth: { x: 47.7, y: 843.6, anchor: "vertical" },
+      baseDimension: { x: 115, y: 796.6, anchor: "vertical" },
     },
   },
   "TS.onGL": {
@@ -318,23 +318,23 @@ export const DIAGRAM_LABEL_LAYOUT = {
     },
   },
   "LA.embedment": {
-    viewBox: { width: 386, height: 868 },
-    heightLineX: 8.2,
+    viewBox: { width: 408, height: 879 },
+    heightLineX: 7.9,
     positions: {
-      totalHeight: { x: -6, y: 481, anchor: "vertical" },
-      armTopDimension: { x: 226.5, y: 5.35, anchor: "bottom-center" },
-      armLength: { x: 193.5, y: 38.35, anchor: "bottom-right" },
-      diameter1: { x: 284, y: 54.5, anchor: "bottom-left" },
-      armSpec: { x: 256.8, y: 142, anchor: "leader", centered: true },
-      diameter2: { x: 248.2, y: 307, anchor: "bottom-left" },
-      poleSpec: { x: 239, y: 449.4, anchor: "leader" },
-      diameter3: { x: 226.7, y: 575, anchor: "bottom-left" },
-      diameter4: { x: 226.7, y: 698, anchor: "bottom-left" },
-      poleTopOffset: { x: 47.7, y: 84.2, anchor: "vertical" },
-      topSectionLength: { x: 47.7, y: 193.35, anchor: "vertical" },
-      taperSectionLength: { x: 47.7, y: 440, anchor: "vertical" },
-      bottomSectionLength: { x: 47.7, y: 660, anchor: "vertical" },
-      baseDimension: { x: 117.81, y: 700, anchor: "vertical" },
+      totalHeight: { x: -6, y: 428.3, anchor: "vertical" },
+      armTopDimension: { x: 235.9, y: 5.5, anchor: "bottom-center" },
+      armLength: { x: 206, y: 38.5, anchor: "bottom-right" },
+      diameter1: { x: 304, y: 55, anchor: "bottom-left" },
+      armSpec: { x: 268, y: 141.5, anchor: "leader", centered: true },
+      diameter2: { x: 269, y: 274.8, anchor: "bottom-left" },
+      poleSpec: { x: 252, y: 453.3, anchor: "leader" },
+      diameter3: { x: 275, y: 586.3, anchor: "bottom-left" },
+      diameter4: { x: 275, y: 717.3, anchor: "bottom-left" },
+      poleTopOffset: { x: 54.5, y: 84, anchor: "vertical" },
+      topSectionLength: { x: 54.5, y: 174.8, anchor: "vertical" },
+      taperSectionLength: { x: 54.5, y: 428.3, anchor: "vertical" },
+      bottomSectionLength: { x: 54.5, y: 685.3, anchor: "vertical" },
+      baseDimension: { x: 127, y: 720, anchor: "vertical" },
     },
   },
   "TS.embedment": {
@@ -402,26 +402,61 @@ export function getDiagramLabels(poleType, groundPosition, height, beGeometry = 
   const layout = DIAGRAM_LABEL_LAYOUT[lookupKey];
   if (!layout) return null;
 
-  const dataGround =
-    layout.textsFromOnGL || groundPosition === "embedment"
-      ? "onGL"
-      : groundPosition;
   const numH = Number(height);
   const mH = numH > 100 ? numH / 1000 : numH;
-  const dataHeight = layout.textsFromOnGL
-    ? String(Math.round((mH - UNDER_GL_DEPTH_MM / 1000) * 10) / 10)
-    : String(mH);
-  const dataTaper = STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper;
-  const group = dataTaper?.[poleType]?.[dataGround] || {};
-  const isTypeWith100 = poleType !== "IS" && poleType !== "IA";
-  const nominalHeight = isTypeWith100
-    ? String(Math.round((Number(dataHeight) - 0.1) * 10) / 10)
-    : String(Math.round((Number(dataHeight) + 0.1) * 10) / 10);
+  const isUnderGL = groundPosition === "underGL" || groundPosition === "under_gl";
+  const isEmbedment = groundPosition === "embedment";
 
-  const entry =
-    group[dataHeight] ||
-    group[nominalHeight] ||
-    group[String(Math.round(Number(dataHeight) * 10) / 10)];
+  const dataGround =
+    layout.textsFromOnGL || isEmbedment
+      ? "onGL"
+      : groundPosition;
+  const dataTaper = STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
+  const group = dataTaper?.[poleType]?.[dataGround] || {};
+
+  let nominalM = mH;
+  if (isUnderGL) {
+    if (
+      String(mH).endsWith(".3") ||
+      String(mH).endsWith(".4") ||
+      String(mH).endsWith(".8") ||
+      String(mH).endsWith(".9")
+    ) {
+      nominalM = Math.round((mH - UNDER_GL_DEPTH_MM / 1000) * 10) / 10;
+    }
+  }
+
+  let entry = null;
+  const isTypeWith100 = poleType !== "IS" && poleType !== "IA";
+  if (dataGround === "onGL") {
+    const k1 = String(nominalM);
+    const k2 = isTypeWith100
+      ? String(Math.round((nominalM + 0.1) * 10) / 10)
+      : String(Math.round((nominalM - 0.1) * 10) / 10);
+    const k3 = isTypeWith100
+      ? String(Math.round((nominalM - 0.1) * 10) / 10)
+      : String(Math.round((nominalM + 0.1) * 10) / 10);
+    entry = group[k1] || group[k2] || group[k3];
+  } else {
+    const underM = Math.round((nominalM + UNDER_GL_DEPTH_MM / 1000) * 10) / 10;
+    const k1 = String(underM);
+    const k2 = isTypeWith100
+      ? String(Math.round((underM + 0.1) * 10) / 10)
+      : String(Math.round((underM - 0.1) * 10) / 10);
+    const k3 = isTypeWith100
+      ? String(Math.round((underM - 0.1) * 10) / 10)
+      : String(Math.round((underM + 0.1) * 10) / 10);
+    entry = group[k1] || group[k2] || group[k3] || group[String(nominalM)];
+  }
+
+  if (!entry) {
+    const fallbackGroup = dataTaper?.[poleType]?.onGL || {};
+    const k1 = String(nominalM);
+    const k2 = String(Math.round((nominalM + 0.1) * 10) / 10);
+    const k3 = String(Math.round((nominalM - 0.1) * 10) / 10);
+    entry = fallbackGroup[k1] || fallbackGroup[k2] || fallbackGroup[k3];
+  }
+
   const poles = entry?.poles;
   const arm = entry?.arms?.[0];
   const arm2 = entry?.arms?.[1];
@@ -469,7 +504,7 @@ export function getDiagramLabels(poleType, groundPosition, height, beGeometry = 
   const isStepped = poles.length >= 3;
 
   const heightInMm = numH > 100 ? Math.round(numH) : Math.round(mH * 1000);
-  const totalHeightMm =
+  let totalHeightMm =
     beGeometry?.height != null
       ? beGeometry.height > 100
         ? Math.round(beGeometry.height)
@@ -477,6 +512,10 @@ export function getDiagramLabels(poleType, groundPosition, height, beGeometry = 
       : pole?.zHeight
         ? Number(pole.zHeight)
         : heightInMm;
+
+  if (isUnderGL && layout.textsFromOnGL) {
+    totalHeightMm += UNDER_GL_DEPTH_MM;
+  }
 
   const upperDia =
     beTopPole?.diameterUpperMm ??

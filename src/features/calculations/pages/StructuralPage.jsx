@@ -47,6 +47,7 @@ import {
   AlertCircle,
   RotateCcw,
   X,
+  Image as ImageIcon,
 } from "lucide-react";
 
 // Hooks Form & Kalkulasi
@@ -61,17 +62,17 @@ import { usePoleStandardData } from "../hooks/usePoleStandardData";
 import { useReport } from "../../report/hooks/useReport";
 
 // Komponen Ilustrasi, Tabel, & Modal
-import { LowestHeightIllustration } from "../components/forms/pole/LowestHeightIllustration";
 import { ProjectToolsFlowHeader } from "../components/layout/ProjectToolsFlowHeader";
 import { ResultsTableView } from "../components/tables/pole-result/ResultTableView";
 import { ToastModal } from "../components/modals/ToastModal";
-import { notifyCalculationProgressChanged } from "../utils/calculationProgressEvent";
+import { SchematicPreviewCard } from "../components/schematic/SchematicPreviewCard";
+import { SchematicEditorModal } from "../components/schematic/SchematicEditorModal";
 import {
-  fetchStandardUnderGLPoles,
-  getUnderGLKey,
-  adjustPolesForLowestHeight,
-  getStandardOnGLPoles,
-} from "../utils/underGLStandardHandler";
+  useSchematicBridge,
+  DEFAULT_SCHEMATIC_URL,
+} from "../hooks/useSchematicBridge";
+import { mapInputToSchematicParameters } from "../utils/standardPoleSchematicMapper";
+import { notifyCalculationProgressChanged } from "../utils/calculationProgressEvent";
 import { resolveStandardHeightId } from "../services/poleStandardService";
 
 // ─── 1. STATIC CONFIGURATION OPTIONS ──────────────────────────────────────────
@@ -203,6 +204,101 @@ export default function StructuralPage() {
   const SHOW_RESET_TO_DEFAULT = false;
 
   const resultsTableRef = useRef(null);
+
+  // ─── SCHEMATIC BRIDGE (Vector Schematic Engine) ──────────────────────────
+  const schematicIframeRef = useRef(null);
+  const [isSchematicEditorOpen, setIsSchematicEditorOpen] = useState(false);
+
+  const {
+    isReady: isSchematicReady,
+    isGenerating: isSchematicGenerating,
+    schematicData,
+    finalSvg: schematicFinalSvg,
+    sendParameters: sendSchematicParameters,
+    resetToDefault: resetSchematicToDefault,
+    openEditor: openSchematicEditor,
+  } = useSchematicBridge({
+    iframeRef: schematicIframeRef,
+    schematicUrl: DEFAULT_SCHEMATIC_URL,
+    projectType,
+    onApplied: () => {
+      setIsSchematicEditorOpen(false);
+    },
+    onCancel: () => {
+      setIsSchematicEditorOpen(false);
+    },
+  });
+
+  const schematicParams = useMemo(() => {
+    return mapInputToSchematicParameters({
+      poles: poleForm.poles,
+      arms: armForm.arms,
+      directObjects: doForm.directObjects,
+      overheadWires: ohwForm.overheadWires,
+      condition,
+      poleConfig: poleConfigForm.poleConfig,
+      taperPoleStandard: poleStandardForm.taperPoleStandard,
+    });
+  }, [
+    poleForm.poles,
+    armForm.arms,
+    doForm.directObjects,
+    ohwForm.overheadWires,
+    condition,
+    poleConfigForm.poleConfig,
+    poleStandardForm.taperPoleStandard,
+  ]);
+
+  const lastProcessedCalcKeyRef = useRef(calculation.calculationKey);
+
+  useEffect(() => {
+    if (!calculation.isCalculated || !schematicParams || !isSchematicReady) return;
+
+    const isNewCalculation =
+      lastProcessedCalcKeyRef.current !== calculation.calculationKey;
+    const hasSvg = Boolean(
+      schematicData?.generatedSvg || schematicData?.editedSvg,
+    );
+
+    // Only send parameters when a fresh calculation was performed (or initial mount without SVG).
+    // This strictly prevents schematic preview from updating in real-time while editing inputs or adding OHW.
+    if (!isNewCalculation && hasSvg) {
+      return;
+    }
+
+    lastProcessedCalcKeyRef.current = calculation.calculationKey;
+
+    sendSchematicParameters(schematicParams.payload, {
+      standardId: schematicParams.standardId,
+      replaceManualEdit: isNewCalculation,
+    });
+  }, [
+    calculation.isCalculated,
+    calculation.calculationKey,
+    isSchematicReady,
+    schematicParams,
+    schematicData?.generatedSvg,
+    schematicData?.editedSvg,
+    sendSchematicParameters,
+  ]);
+
+  const handleEditSchematic = useCallback(() => {
+    setIsSchematicEditorOpen(true);
+    openSchematicEditor();
+  }, [openSchematicEditor]);
+
+  const handleRegenerateSchematic = useCallback(() => {
+    if (schematicParams) {
+      resetSchematicToDefault(schematicParams.payload, {
+        standardId: schematicParams.standardId,
+      });
+    }
+  }, [resetSchematicToDefault, schematicParams]);
+
+  const previewSchematicSvg =
+    schematicData?.editedSvg ||
+    schematicData?.generatedSvg ||
+    "";
 
   // Auto-scroll to calculation results table whenever calculation succeeds
   useEffect(() => {
@@ -416,6 +512,28 @@ export default function StructuralPage() {
     }
   }, [projectType]);
 
+  // ─── GROUND MODE & LOWEST HEIGHT CONFIGURATION ──────────────────────────────
+  const activeGroundPosition =
+    poleStandardForm.taperPoleStandard?.groundPosition ||
+    standardPreset?.groundPosition ||
+    condition?.groundPosition ||
+    "onGL";
+
+  const isEmbedment =
+    isStandard &&
+    (activeGroundPosition === "embedment" ||
+      condition?.installationPole === "embedment" ||
+      poleStandardForm.taperPoleStandard?.installationPole === "embedment");
+
+  const isUnderGL =
+    isStandard &&
+    !isEmbedment &&
+    (activeGroundPosition === "underGL" ||
+      activeGroundPosition === "under_gl" ||
+      condition?.groundPosition === "under_gl");
+
+  const isOnGL = isStandard && !isEmbedment && !isUnderGL;
+
   const isModifiedFromPreset = useMemo(() => {
     if (!isStandard || !standardPreset) return false;
     try {
@@ -504,10 +622,11 @@ export default function StructuralPage() {
   // Per-field / per-item modification helpers against standard preset
   const isLowestHeightModified = useMemo(() => {
     if (!isStandard || !standardPreset?.poleConfig) return false;
-    const presetLowest = String(standardPreset.poleConfig.lowestHeight ?? "0");
-    const currentLowest = String(poleConfigForm.poleConfig?.lowestHeight ?? "0");
-    return presetLowest !== currentLowest;
-  }, [isStandard, standardPreset, poleConfigForm.poleConfig?.lowestHeight]);
+    const defaultVal = isUnderGL ? "-300" : "0";
+    const presetLowest = String(standardPreset.poleConfig.lowestHeight ?? defaultVal);
+    const currentLowest = String(poleConfigForm.poleConfig?.lowestHeight ?? "");
+    return currentLowest !== "" && presetLowest !== currentLowest;
+  }, [isStandard, standardPreset, poleConfigForm.poleConfig?.lowestHeight, isUnderGL]);
 
   const isOverdesignModified = useMemo(() => {
     if (!isStandard || !standardPreset?.poleConfig) return false;
@@ -620,7 +739,7 @@ export default function StructuralPage() {
       sessionStorage.removeItem(`${projectType}_resultsOhw`);
       sessionStorage.removeItem(`${projectType}_showResults`);
       sessionStorage.removeItem(`${projectType}_calculatedInputsFingerprint`);
-    } catch {}
+    } catch { }
 
     calculation.setToast?.({
       message: "Reset to standard specifications successfully.",
@@ -645,184 +764,22 @@ export default function StructuralPage() {
   //    - Bottom pole (Pole-N, buried segment): zHeight = baseZHeight + delta (IS: 250 mm, IA: 1750 mm)
   //    - Middle segments (e.g., Pole-2 on IA): remain UNCHANGED (3405 mm).
   // 4. Calculations:
-  //    - Switching modes or modifying lowestHeight invalidates previous calculations so that
-  //      the user must recalculate before generating reports.
-  const baseOnGLPolesRef = useRef(null);
-  const baseUnderPolesRef = useRef(null);
-  const baseOnGLHeightIdRef = useRef(null);
-  const baseUnderGLHeightIdRef = useRef(null);
-  const currentGroundModeRef = useRef("onGL");
-  const lastProcessedLowestHeightRef = useRef(null);
-  const [isSwitchingGroundMode, setIsSwitchingGroundMode] = useState(false);
-
-  // Initialize cached On GL poles and height ID from standardPreset or initial form state
-  useEffect(() => {
-    if (isStandard) {
-      if (!baseOnGLHeightIdRef.current) {
-        baseOnGLHeightIdRef.current =
-          poleStandardForm.taperPoleStandard?.poleStandardHeightId ||
-          standardPreset?.poleStandardHeightId ||
-          null;
-      }
-      if (!baseOnGLPolesRef.current || baseOnGLPolesRef.current.length === 0) {
-        if (standardPreset?.poles && standardPreset.poles.length > 0) {
-          baseOnGLPolesRef.current = JSON.parse(JSON.stringify(standardPreset.poles));
-        } else if (poleForm.poles && poleForm.poles.length > 0) {
-          baseOnGLPolesRef.current = JSON.parse(JSON.stringify(poleForm.poles));
-        }
-      }
-    }
-  }, [
-    isStandard,
-    standardPreset,
-    poleForm.poles,
-    poleStandardForm.taperPoleStandard?.poleStandardHeightId,
-  ]);
-
-  // Reactive listener on lowestHeight changes
+  // Sinkronisasi otomatis lowestHeight berdasarkan groundPosition yang dipilih di Project Tools
+  const lastSyncGroundRef = useRef(null);
   useEffect(() => {
     if (!isStandard) return;
 
-    const lowestHeightRaw = poleConfigForm.poleConfig?.lowestHeight;
-    if (lowestHeightRaw === undefined || lowestHeightRaw === null || lowestHeightRaw === "") {
-      return;
-    }
+    if (lastSyncGroundRef.current !== activeGroundPosition) {
+      lastSyncGroundRef.current = activeGroundPosition;
 
-    const numVal = Number(lowestHeightRaw);
-    if (isNaN(numVal)) return;
-
-    // Avoid duplicate executions if lowestHeight has already been processed
-    if (lastProcessedLowestHeightRef.current === numVal) {
-      return;
-    }
-
-    const shortCode =
-      standardPreset?.poleType ||
-      poleStandardForm.taperPoleStandard?.poleType ||
-      "IS";
-    const nominalHeight =
-      standardPreset?.height ||
-      poleStandardForm.taperPoleStandard?.height ||
-      "8";
-
-    // Debounce 350ms to prevent premature updates while typing minus or intermediate digits
-    const timer = setTimeout(async () => {
-      lastProcessedLowestHeightRef.current = numVal;
-
-      if (numVal < 0) {
-        // ─── UNDER GL TRIGGERED (lowestHeight < 0) ───
-        try {
-          setIsSwitchingGroundMode(true);
-
-          // Save current On GL poles and height ID to cache before switching if not already cached
-          if (!baseOnGLPolesRef.current || baseOnGLPolesRef.current.length === 0) {
-            baseOnGLPolesRef.current = JSON.parse(JSON.stringify(poleForm.poles));
-          }
-          if (!baseOnGLHeightIdRef.current) {
-            baseOnGLHeightIdRef.current =
-              poleStandardForm.taperPoleStandard?.poleStandardHeightId ||
-              standardPreset?.poleStandardHeightId ||
-              null;
-          }
-
-          // Resolve Under GL height ID from master data
-          let underGLHeightId = baseUnderGLHeightIdRef.current;
-          if (!underGLHeightId) {
-            const underKey = getUnderGLKey(nominalHeight);
-            const underOption = heightOptionsByStandard?.[shortCode]?.underGL?.find(
-              (opt) => opt.id === underKey || opt.displayMeter === `${underKey} m`,
-            );
-            underGLHeightId = underOption?.heightId || null;
-            if (!underGLHeightId) {
-              underGLHeightId = await resolveStandardHeightId({
-                poleType: shortCode,
-                nominalHeight,
-                isUnderGL: true,
-              });
-            }
-            if (underGLHeightId) {
-              baseUnderGLHeightIdRef.current = underGLHeightId;
-            }
-          }
-
-          // Fetch base Under GL poles (-300 mm baseline) from BE API / local catalog if not cached
-          let baseUnder = baseUnderPolesRef.current;
-          if (!baseUnder || baseUnder.length === 0) {
-            baseUnder = await fetchStandardUnderGLPoles({
-              shortCode,
-              nominalHeight,
-              underGLHeightId,
-            });
-
-            if (baseUnder && baseUnder.length > 0) {
-              baseUnderPolesRef.current = baseUnder;
-            }
-          }
-
-          if (baseUnder && baseUnder.length > 0) {
-            // Apply delta adjustment if lowestHeight !== -300 mm
-            const adjustedPoles = adjustPolesForLowestHeight(baseUnder, numVal);
-            poleForm.setPoles(adjustedPoles);
-
-            currentGroundModeRef.current = "underGL";
-            poleStandardForm.updateTaperPoleStandard?.({
-              groundPosition: "underGL",
-              ...(underGLHeightId ? { poleStandardHeightId: underGLHeightId } : {}),
-            });
-            updateCondition({ groundPosition: "under_gl" });
-
-            // Invalidate calculation state so user recalculates with Under GL specifications
-            calculation.resetCalculation?.();
-          }
-        } catch (err) {
-          console.error("[StructuralPage] Error switching to Under GL:", err);
-        } finally {
-          setIsSwitchingGroundMode(false);
-        }
-      } else {
-        // ─── ON GL RESTORED (lowestHeight >= 0) ───
-        if (currentGroundModeRef.current === "underGL") {
-          const restoredOnGL =
-            baseOnGLPolesRef.current ||
-            standardPreset?.poles ||
-            getStandardOnGLPoles(shortCode, nominalHeight);
-
-          if (restoredOnGL && restoredOnGL.length > 0) {
-            poleForm.setPoles(JSON.parse(JSON.stringify(restoredOnGL)));
-          }
-
-          currentGroundModeRef.current = "onGL";
-          const onGLHeightId =
-            baseOnGLHeightIdRef.current ||
-            standardPreset?.poleStandardHeightId ||
-            await resolveStandardHeightId({
-              poleType: shortCode,
-              nominalHeight,
-              isUnderGL: false,
-            });
-
-          poleStandardForm.updateTaperPoleStandard?.({
-            groundPosition: "onGL",
-            ...(onGLHeightId ? { poleStandardHeightId: onGLHeightId } : {}),
-          });
-          updateCondition({ groundPosition: "on_gl" });
-
-          // Invalidate calculation state so user recalculates with On GL specifications
-          calculation.resetCalculation?.();
-        }
+      // Hanya inisialisasi default jika nilai lowestHeight belum pernah di-set (null atau undefined)
+      const currentVal = poleConfigForm.poleConfig?.lowestHeight;
+      if (currentVal === undefined || currentVal === null) {
+        const defaultVal = isUnderGL ? "-300" : "0";
+        poleConfigForm.updatePoleConfig({ lowestHeight: defaultVal });
       }
-    }, 350);
-
-    return () => clearTimeout(timer);
-  }, [
-    isStandard,
-    poleConfigForm.poleConfig?.lowestHeight,
-    standardPreset,
-    poleStandardForm.taperPoleStandard,
-    heightOptionsByStandard,
-    heightOptionsByStandard,
-    updateCondition,
-  ]);
+    }
+  }, [isStandard, activeGroundPosition, isUnderGL]);
 
   // ─── QUICK SET & CLIPBOARD HANDLERS ────────────────────────────────────────
   // 1. Poles
@@ -862,7 +819,18 @@ export default function StructuralPage() {
     if (!poleClipboard) return;
     poleForm.setPoles((prev) => {
       const next = [...prev];
-      next[idx] = { ...next[idx], ...poleClipboard, id: next[idx].id };
+      const isStr = (poleClipboard.poleType || poleClipboard.type || "Straight").toLowerCase() === "straight";
+      const lowerD = poleClipboard.lowerDiameter ?? next[idx].lowerDiameter ?? "";
+      const lowerT = poleClipboard.lowerThickness ?? next[idx].lowerThickness ?? "";
+      next[idx] = {
+        ...next[idx],
+        ...poleClipboard,
+        id: next[idx].id,
+        ...(isStr && {
+          upperDiameter: lowerD,
+          upperThickness: lowerT,
+        }),
+      };
       return next;
     });
   };
@@ -1320,6 +1288,11 @@ export default function StructuralPage() {
     !calculation.loading &&
     !calculation.isInputsChanged;
 
+  const hasCalculationResults = Boolean(
+    (calculation.isCalculated || calculation.results?.length > 0) &&
+    calculation.displayResult
+  );
+
   // ─── 6. JSX RENDER VIEW ─────────────────────────────────────────────────────
   return (
     <div className="w-full max-w-[1440px] mx-auto pt-0 pb-24 sm:pb-8 px-2">
@@ -1350,16 +1323,16 @@ export default function StructuralPage() {
           </button>
 
           {openSections.condition && (
-            <div className="p-5 grid grid-cols-1 md:grid-cols-[1fr_1.5fr] gap-6">
+            <div className="p-3.5 sm:p-5 grid grid-cols-[145px_1fr] sm:grid-cols-[220px_1fr] md:grid-cols-[260px_1fr] lg:grid-cols-[280px_1fr] xl:grid-cols-[300px_1fr] gap-3 sm:gap-5 md:gap-8">
               {/* Left: Design Standard */}
               <div>
                 <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-1">
                   Design Standard
                 </label>
-                <p className="text-xs text-gray-500 mb-3">
+                <p className="text-xs text-gray-500 mb-2.5 sm:mb-3 leading-snug">
                   Select a standard to view its required parameters.
                 </p>
-                <div className="space-y-2">
+                <div className="space-y-1.5 sm:space-y-2">
                   {DESIGN_STANDARDS.map((std) => {
                     const isSelected = selectedStandardTab === std.id;
                     return (
@@ -1367,16 +1340,16 @@ export default function StructuralPage() {
                         key={std.id}
                         type="button"
                         onClick={() => handleSelectDesignStandard(std)}
-                        className={`w-full text-left px-3.5 py-2.5 rounded border text-xs md:text-sm flex items-center justify-between cursor-pointer transition-colors ${isSelected
+                        className={`w-full text-left px-3 sm:px-4 py-2 sm:py-2.5 rounded border text-xs md:text-sm flex items-center justify-between gap-1.5 cursor-pointer transition-colors ${isSelected
                           ? "border-blue-500 bg-blue-50/50 text-blue-900 font-medium"
                           : "border-gray-200 hover:border-gray-400 text-gray-700 bg-white"
                           }`}
                       >
-                        <span>{std.label}</span>
+                        <span className="leading-tight">{std.label}</span>
                         {isSelected ? (
-                          <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                          <CheckCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-500 shrink-0" />
                         ) : (
-                          <Circle className="w-4 h-4 text-gray-300 flex-shrink-0" />
+                          <Circle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-300 shrink-0" />
                         )}
                       </button>
                     );
@@ -1390,14 +1363,14 @@ export default function StructuralPage() {
                   <label className="block text-xs md:text-sm font-semibold text-gray-900 mb-1">
                     Old JIL parameters
                   </label>
-                  <p className="text-xs text-gray-500 mb-3">
+                  <p className="text-xs text-gray-500 mb-2.5 sm:mb-3 leading-snug">
                     Pre-filled with default values. Adjust them to match your
                     project requirements.
                   </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="flex flex-col md:flex-row items-start gap-4 sm:gap-6">
                     {/* Wind Speed */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    <div className="w-full sm:w-[220px] max-w-[240px]">
+                      <label className="block text-xs font-medium text-gray-700 mb-1 sm:mb-1.5">
                         Wind Speed <span className="text-red-500 font-semibold">*</span>
                       </label>
                       <div className="relative">
@@ -1410,15 +1383,15 @@ export default function StructuralPage() {
                           }
                           className="w-full pl-3 pr-12 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-700 bg-white"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs pointer-events-none">
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs pointer-events-none whitespace-nowrap">
                           m/s
                         </span>
                       </div>
                     </div>
 
                     {/* Air Density */}
-                    <div>
-                      <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                    <div className="w-full sm:w-[220px] max-w-[240px]">
+                      <label className="block text-xs font-medium text-gray-700 mb-1 sm:mb-1.5">
                         Air Density <span className="text-red-500 font-semibold">*</span>
                       </label>
                       <div className="relative">
@@ -1431,9 +1404,9 @@ export default function StructuralPage() {
                               designAirDensity: e.target.value,
                             })
                           }
-                          className="w-full pl-3 pr-16 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-700 bg-white"
+                          className="w-full pl-3 pr-24 py-2 rounded border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-700 bg-white"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs pointer-events-none">
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs pointer-events-none whitespace-nowrap">
                           N · sec2/m4
                         </span>
                       </div>
@@ -1506,19 +1479,99 @@ export default function StructuralPage() {
                 </div>
               )}
 
+              {/* ── Sub-section 0: Embedment Length (Khusus mode Embedment) ── */}
+              {isEmbedment && (
+                <div className="border border-gray-200 rounded p-4 bg-white">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-xs md:text-sm font-semibold text-blue-900 flex items-center gap-2">
+                        <span className="w-1 h-3.5 bg-blue-600 rounded-full inline-block" />
+                        Embedment Length
+                      </h3>
+                    </div>
+                  </div>
+
+                  {/* Centered Content: Input on Left, Embedment SVG Diagram on Right */}
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 py-2 sm:py-3">
+                    {/* Input Field (Style persis sama dengan Lowest Height Position) */}
+                    <div className="w-44 shrink-0">
+                      <label htmlFor="embedmentLength" className="block text-xs font-medium text-gray-700 mb-1.5">
+                        Embedment Length <span className="text-red-500 font-semibold">*</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          id="embedmentLength"
+                          type="number"
+                          min="0"
+                          placeholder="Input Length"
+                          value={
+                            poleConfigForm.poleConfig?.embedmentLength ??
+                            poleStandardForm.taperPoleStandard?.embedmentLength ??
+                            ""
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            poleConfigForm.updatePoleConfig({
+                              embedmentLength: val,
+                            });
+                            poleStandardForm.updateTaperPoleStandard?.({
+                              embedmentLength: val,
+                            });
+                            if (poleConfigForm.poleConfigErrors?.embedmentLength) {
+                              poleConfigForm.setPoleConfigErrors((prev) => {
+                                const next = { ...prev };
+                                delete next.embedmentLength;
+                                return next;
+                              });
+                            }
+                          }}
+                          className={`w-full h-10 pl-3.5 pr-12 rounded-md border text-sm outline-none transition-colors ${
+                            poleConfigForm.poleConfigErrors?.embedmentLength
+                              ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                              : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                          }`}
+                        />
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-medium pointer-events-none">
+                          mm
+                        </span>
+                      </div>
+                      {poleConfigForm.poleConfigErrors?.embedmentLength && (
+                        <p className="text-[11px] text-red-500 mt-1">
+                          *{poleConfigForm.poleConfigErrors.embedmentLength}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Right Side: Embedment SVG Graphic (Mepet gap) */}
+                    <div className="relative inline-flex items-center justify-center shrink-0 -ml-1 sm:-ml-3">
+                      <img
+                        src="/images/embedment.svg"
+                        alt="Embedment Length Illustration"
+                        className="h-40 sm:h-48 w-auto object-contain select-none shrink-0"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* ── Sub-section 1: Lowest Height Position ── */}
               <div className="border border-gray-200 rounded p-4 bg-white">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-xs md:text-sm font-semibold text-blue-900 flex items-center gap-2">
-                    <span className="w-1 h-3.5 bg-blue-600 rounded-full inline-block" />
-                    Lowest Height Position
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xs md:text-sm font-semibold text-blue-900 flex items-center gap-2">
+                      <span className="w-1 h-3.5 bg-blue-600 rounded-full inline-block" />
+                      Lowest Height Position
+                    </h3>
+                  </div>
                   {SHOW_RESET_TO_DEFAULT && isLowestHeightModified && (
                     <button
                       type="button"
                       onClick={() => {
+                        const defaultVal =
+                          standardPreset?.poleConfig?.lowestHeight ??
+                          (isUnderGL ? "-300" : "0");
                         poleConfigForm.updatePoleConfig({
-                          lowestHeight: standardPreset.poleConfig?.lowestHeight ?? "0",
+                          lowestHeight: defaultVal,
                         });
                       }}
                       className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 cursor-pointer transition-colors hover:underline"
@@ -1529,63 +1582,55 @@ export default function StructuralPage() {
                   )}
                 </div>
 
-                <div className="flex flex-col md:flex-row items-center justify-center gap-8 py-2">
-                  {/* Left: Inputs */}
-                  <div className="flex flex-col justify-center">
-                    <label className="block text-xs font-medium text-gray-700 mb-1.5">
-                      Lowest Height <span className="text-red-500 font-semibold">*</span>
-                    </label>
-                    <div className="relative w-44">
-                      <input
-                        id="lowestHeight"
-                        type="number"
-                        value={
-                          poleConfigForm.poleConfig?.lowestHeight ?? "0"
-                        }
-                        onChange={(e) => {
-                          poleConfigForm.updatePoleConfig({
-                            lowestHeight: e.target.value,
+                {/* Input Pojok Kiri */}
+                <div className="mb-4">
+                  <label htmlFor="lowestHeight" className="block text-xs font-medium text-gray-700 mb-1.5">
+                    Lowest Height <span className="text-red-500 font-semibold">*</span>
+                  </label>
+                  <div className="relative w-44">
+                    <input
+                      id="lowestHeight"
+                      type="number"
+                      placeholder={isUnderGL ? "-300" : "0"}
+                      value={poleConfigForm.poleConfig?.lowestHeight ?? ""}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        poleConfigForm.updatePoleConfig({
+                          lowestHeight: val,
+                        });
+                        if (poleConfigForm.poleConfigErrors?.lowestHeight) {
+                          poleConfigForm.setPoleConfigErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.lowestHeight;
+                            return next;
                           });
-                          if (poleConfigForm.poleConfigErrors?.lowestHeight) {
-                            poleConfigForm.setPoleConfigErrors((prev) => {
-                              const next = { ...prev };
-                              delete next.lowestHeight;
-                              return next;
-                            });
-                          }
-                        }}
-                        className={`w-full h-10 pl-3.5 pr-12 rounded-md border text-sm outline-none transition-colors ${
-                          poleConfigForm.poleConfigErrors?.lowestHeight
-                            ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                            : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                        }`}
-                      />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-medium pointer-events-none">
-                        mm
-                      </span>
-                    </div>
-
-                    {poleConfigForm.poleConfigErrors?.lowestHeight && (
-                      <p className="text-[11px] text-red-500 mt-1">
-                        *{poleConfigForm.poleConfigErrors.lowestHeight}
-                      </p>
-                    )}
-
-                    {/* Under GL Dynamic Status Feedback */}
-                    {isSwitchingGroundMode && (
-                      <p className="text-[11px] text-blue-600 mt-1.5 flex items-center gap-1.5 font-medium animate-pulse max-w-[200px]">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600 shrink-0" />
-                        <span>Loading Under GL standard specifications...</span>
-                      </p>
-                    )}
+                        }
+                      }}
+                      className={`w-full h-10 pl-3.5 pr-12 rounded-md border text-sm outline-none transition-colors ${
+                        poleConfigForm.poleConfigErrors?.lowestHeight
+                          ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                          : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                      }`}
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-medium pointer-events-none">
+                      mm
+                    </span>
                   </div>
 
-                  {/* Right: Interactive Illustration Graphic */}
-                  <div className="w-full sm:w-[300px] shrink-0">
-                    <LowestHeightIllustration
-                      installationType="baseplate"
-                      lowestHeight={poleConfigForm.poleConfig?.lowestHeight}
-                    />
+                  {poleConfigForm.poleConfigErrors?.lowestHeight && (
+                    <p className="text-[11px] text-red-500 mt-1">
+                      *{poleConfigForm.poleConfigErrors.lowestHeight}
+                    </p>
+                  )}
+                </div>
+
+                {/* Kotak Space Image Full Width */}
+                <div className="w-full border border-dashed border-gray-300 rounded-lg bg-gray-50/50 flex flex-col items-center justify-center p-6 min-h-[160px] sm:min-h-[200px] text-center overflow-hidden">
+                  <div className="flex flex-col items-center justify-center text-gray-400 select-none">
+                    <ImageIcon className="w-8 h-8 mb-2 stroke-1 text-gray-300" />
+                    <span className="text-xs font-medium text-gray-400">
+                      Lowest Height Position Illustration
+                    </span>
                   </div>
                 </div>
               </div>
@@ -1624,12 +1669,11 @@ export default function StructuralPage() {
                             });
                           }
                         }}
-                        className={`w-full h-10 px-3.5 rounded-md border text-sm outline-none transition-colors ${
-                          poleConfigForm.poleConfigErrors?.overdesignFactor ||
+                        className={`w-full h-10 px-3.5 rounded-md border text-sm outline-none transition-colors ${poleConfigForm.poleConfigErrors?.overdesignFactor ||
                           poleConfigForm.poleConfigErrors?.overDesign
-                            ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                            : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                        }`}
+                          ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                          : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                          }`}
                       />
                     </div>
                   </div>
@@ -1653,11 +1697,11 @@ export default function StructuralPage() {
 
                 {(poleConfigForm.poleConfigErrors?.overdesignFactor ||
                   poleConfigForm.poleConfigErrors?.overDesign) && (
-                  <p className="text-[11px] text-red-500 mt-1.5">
-                    *{poleConfigForm.poleConfigErrors?.overdesignFactor ||
-                      poleConfigForm.poleConfigErrors?.overDesign}
-                  </p>
-                )}
+                    <p className="text-[11px] text-red-500 mt-1.5">
+                      *{poleConfigForm.poleConfigErrors?.overdesignFactor ||
+                        poleConfigForm.poleConfigErrors?.overDesign}
+                    </p>
+                  )}
               </div>
 
               {/* ── Sub-section 3: Step Poles ── */}
@@ -1781,8 +1825,10 @@ export default function StructuralPage() {
                       {/* Fields Grid */}
                       {(() => {
                         const poleErr = poleForm.poleErrors?.[pole.id] || poleForm.poleErrors?.[String(idx + 1)] || {};
+                        const poleType = pole.poleType || pole.type || "Straight";
+                        const isStraight = poleType.toLowerCase() === "straight";
                         return (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-9 gap-2.5">
+                          <div className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${isStraight ? "xl:grid-cols-7" : "xl:grid-cols-9"} gap-2.5`}>
                             {/* Pole Name */}
                             <div>
                               <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Pole Name">
@@ -1797,11 +1843,10 @@ export default function StructuralPage() {
                                     name: e.target.value,
                                   })
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  poleErr.name
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.name
+                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                  }`}
                               />
                               {typeof poleErr.name === "string" && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">*{poleErr.name}</p>
@@ -1839,12 +1884,18 @@ export default function StructuralPage() {
                               <select
                                 id={`pole-${pole.id || idx + 1}-poleType`}
                                 value={pole.poleType || pole.type || "Straight"}
-                                onChange={(e) =>
-                                  poleForm.updatePole(pole.id || String(idx + 1), {
-                                    poleType: e.target.value,
-                                    type: e.target.value,
-                                  })
-                                }
+                                onChange={(e) => {
+                                  const newType = e.target.value;
+                                  const updates = {
+                                    poleType: newType,
+                                    type: newType,
+                                  };
+                                  if (newType.toLowerCase() === "straight") {
+                                    updates.upperDiameter = pole.lowerDiameter || pole.upperDiameter || "";
+                                    updates.upperThickness = pole.lowerThickness || pole.upperThickness || "";
+                                  }
+                                  poleForm.updatePole(pole.id || String(idx + 1), updates);
+                                }}
                                 className="w-full h-10 px-2 rounded-md border border-gray-300 text-xs md:text-sm outline-none focus:border-gray-800 focus:ring-1 focus:ring-gray-800 bg-white cursor-pointer transition-colors"
                               >
                                 <option value="Straight">Straight</option>
@@ -1852,70 +1903,87 @@ export default function StructuralPage() {
                               </select>
                             </div>
 
-                            {/* Lower Diameter */}
+                            {/* Diameter (Lower / Straight) */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Lower Diameter">
-                                Lower Diameter <span className="text-red-500 font-semibold">*</span>
+                              <label
+                                className="block text-xs font-medium text-gray-700 mb-1.5 truncate"
+                                title={isStraight ? "Diameter" : "Lower Diameter"}
+                              >
+                                {isStraight ? "Diameter" : "Lower Diameter"}{" "}
+                                <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
                                 <input
                                   id={`pole-${pole.id || idx + 1}-lowerDiameter`}
                                   type="number"
                                   value={pole.lowerDiameter || ""}
-                                  onChange={(e) =>
+                                  onChange={(e) => {
+                                    const val = e.target.value;
                                     poleForm.updatePole(pole.id || String(idx + 1), {
-                                      lowerDiameter: e.target.value,
-                                    })
-                                  }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.lowerDiameter
+                                      lowerDiameter: val,
+                                      ...(isStraight && { upperDiameter: val }),
+                                    });
+                                  }}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${(poleErr.lowerDiameter || (isStraight && poleErr.upperDiameter))
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
                                 </span>
                               </div>
-                              {typeof poleErr.lowerDiameter === "string" && (
-                                <p className="text-[10px] text-red-500 mt-1 truncate">*{poleErr.lowerDiameter}</p>
+                              {(poleErr.lowerDiameter || (isStraight && poleErr.upperDiameter)) && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{poleErr.lowerDiameter || (isStraight && poleErr.upperDiameter)}
+                                </p>
                               )}
                             </div>
 
-                            {/* Upper Diameter */}
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Upper Diameter">
-                                Upper Diameter <span className="text-red-500 font-semibold">*</span>
-                              </label>
-                              <div className="relative">
-                                <input
-                                  id={`pole-${pole.id || idx + 1}-upperDiameter`}
-                                  type="number"
-                                  value={pole.upperDiameter || ""}
-                                  onChange={(e) =>
-                                    poleForm.updatePole(pole.id || String(idx + 1), {
-                                      upperDiameter: e.target.value,
-                                    })
-                                  }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.upperDiameter
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
-                                />
-                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                  mm
-                                </span>
+                            {/* Upper Diameter (Taper only) */}
+                            {!isStraight && (
+                              <div>
+                                <label
+                                  className="block text-xs font-medium text-gray-700 mb-1.5 truncate"
+                                  title="Upper Diameter"
+                                >
+                                  Upper Diameter <span className="text-red-500 font-semibold">*</span>
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    id={`pole-${pole.id || idx + 1}-upperDiameter`}
+                                    type="number"
+                                    value={pole.upperDiameter || ""}
+                                    onChange={(e) =>
+                                      poleForm.updatePole(pole.id || String(idx + 1), {
+                                        upperDiameter: e.target.value,
+                                      })
+                                    }
+                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.upperDiameter
+                                        ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                        : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                      }`}
+                                  />
+                                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                    mm
+                                  </span>
+                                </div>
+                                {typeof poleErr.upperDiameter === "string" && (
+                                  <p className="text-[10px] text-red-500 mt-1 truncate">
+                                    *{poleErr.upperDiameter}
+                                  </p>
+                                )}
                               </div>
-                              {typeof poleErr.upperDiameter === "string" && (
-                                <p className="text-[10px] text-red-500 mt-1 truncate">*{poleErr.upperDiameter}</p>
-                              )}
-                            </div>
+                            )}
 
-                            {/* Lower Thickness */}
+                            {/* Thickness (Lower / Straight) */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Lower Thickness">
-                                Lower Thickness <span className="text-red-500 font-semibold">*</span>
+                              <label
+                                className="block text-xs font-medium text-gray-700 mb-1.5 truncate"
+                                title={isStraight ? "Thickness" : "Lower Thickness"}
+                              >
+                                {isStraight ? "Thickness" : "Lower Thickness"}{" "}
+                                <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
                                 <input
@@ -1923,56 +1991,65 @@ export default function StructuralPage() {
                                   type="number"
                                   step="any"
                                   value={pole.lowerThickness || ""}
-                                  onChange={(e) =>
+                                  onChange={(e) => {
+                                    const val = e.target.value;
                                     poleForm.updatePole(pole.id || String(idx + 1), {
-                                      lowerThickness: e.target.value,
-                                    })
-                                  }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.lowerThickness
+                                      lowerThickness: val,
+                                      ...(isStraight && { upperThickness: val }),
+                                    });
+                                  }}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${(poleErr.lowerThickness || (isStraight && poleErr.upperThickness))
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
                                 </span>
                               </div>
-                              {typeof poleErr.lowerThickness === "string" && (
-                                <p className="text-[10px] text-red-500 mt-1 truncate">*{poleErr.lowerThickness}</p>
+                              {(poleErr.lowerThickness || (isStraight && poleErr.upperThickness)) && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{poleErr.lowerThickness || (isStraight && poleErr.upperThickness)}
+                                </p>
                               )}
                             </div>
 
-                            {/* Upper Thickness */}
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Upper Thickness">
-                                Upper Thickness <span className="text-red-500 font-semibold">*</span>
-                              </label>
-                              <div className="relative">
-                                <input
-                                  id={`pole-${pole.id || idx + 1}-upperThickness`}
-                                  type="number"
-                                  step="any"
-                                  value={pole.upperThickness || ""}
-                                  onChange={(e) =>
-                                    poleForm.updatePole(pole.id || String(idx + 1), {
-                                      upperThickness: e.target.value,
-                                    })
-                                  }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.upperThickness
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
-                                />
-                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                  mm
-                                </span>
+                            {/* Upper Thickness (Taper only) */}
+                            {!isStraight && (
+                              <div>
+                                <label
+                                  className="block text-xs font-medium text-gray-700 mb-1.5 truncate"
+                                  title="Upper Thickness"
+                                >
+                                  Upper Thickness <span className="text-red-500 font-semibold">*</span>
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    id={`pole-${pole.id || idx + 1}-upperThickness`}
+                                    type="number"
+                                    step="any"
+                                    value={pole.upperThickness || ""}
+                                    onChange={(e) =>
+                                      poleForm.updatePole(pole.id || String(idx + 1), {
+                                        upperThickness: e.target.value,
+                                      })
+                                    }
+                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.upperThickness
+                                        ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                        : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                      }`}
+                                  />
+                                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                    mm
+                                  </span>
+                                </div>
+                                {typeof poleErr.upperThickness === "string" && (
+                                  <p className="text-[10px] text-red-500 mt-1 truncate">
+                                    *{poleErr.upperThickness}
+                                  </p>
+                                )}
                               </div>
-                              {typeof poleErr.upperThickness === "string" && (
-                                <p className="text-[10px] text-red-500 mt-1 truncate">*{poleErr.upperThickness}</p>
-                              )}
-                            </div>
+                            )}
 
                             {/* Height */}
                             <div>
@@ -1989,11 +2066,10 @@ export default function StructuralPage() {
                                       zHeight: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.zHeight
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.zHeight
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -2020,11 +2096,10 @@ export default function StructuralPage() {
                                       quantity: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.quantity
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.quantity
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   pcs
@@ -2133,362 +2208,353 @@ export default function StructuralPage() {
                         {};
 
                       return (
-                      <div
-                        key={obj.idDo || idx}
-                        className="p-4 rounded border border-gray-200 bg-white space-y-3 shadow-2xs"
-                      >
-                        <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded bg-[#0f3d64] text-white text-[11px] font-bold flex items-center justify-center">
-                              {idx + 1}
-                            </span>
-                            <span className="text-xs font-semibold text-gray-900">
-                              Direct Object
-                            </span>
-                            <span className="text-[11px] text-gray-500">
-                              {obj.type === "directional"
-                                ? "Directional"
-                                : "Omni"}{" "}
-                              Type
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleCopyDo(obj)}
-                              title="Copy"
-                              className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handlePasteDo(idx)}
-                              disabled={!doClipboard}
-                              title="Paste"
-                              className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                            </button>
-                            {SHOW_RESET_TO_DEFAULT && isDoModified(obj, idx) && (
-                              <button
-                                type="button"
-                                onClick={() => handleResetDo(idx)}
-                                className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
-                                title="Reset to default spec"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
-                                <span>Reset to default spec</span>
-                              </button>
-                            )}
-                            {!isStandard && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteDo(idx)}
-                                className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
                         <div
-                          className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${obj.type === "directional"
-                            ? "xl:grid-cols-9"
-                            : "xl:grid-cols-7"
-                            } gap-2.5`}
+                          key={obj.idDo || idx}
+                          className="p-4 rounded border border-gray-200 bg-white space-y-3 shadow-2xs"
                         >
-                          {/* Object Name */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Name">
-                              Object Name <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <input
-                              id={`do-${obj.idDo || obj.id || idx + 1}-name`}
-                              type="text"
-                              value={obj.name || ""}
-                              onChange={(e) =>
-                                doForm.updateDo(obj.idDo || String(idx + 1), {
-                                  name: e.target.value,
-                                })
-                              }
-                              className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                doErr.name
-                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                              }`}
-                            />
-                            {doErr.name && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{doErr.name}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Object Type */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Type">
-                              Object Type <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <select
-                              id={`do-${obj.idDo || obj.id || idx + 1}-type`}
-                              value={obj.type || "omni"}
-                              onChange={(e) =>
-                                doForm.updateDo(obj.idDo || String(idx + 1), {
-                                  type: e.target.value,
-                                })
-                              }
-                              className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${
-                                doErr.type
-                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                              }`}
-                            >
-                              {OBJECT_TYPE_OPTIONS.map((opt) => (
-                                <option key={opt.value} value={opt.value}>
-                                  {opt.label}
-                                </option>
-                              ))}
-                            </select>
-                            {doErr.type && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{doErr.type}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Front Area */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Front Area">
-                              Front Area <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`do-${obj.idDo || obj.id || idx + 1}-frontArea`}
-                                type="number"
-                                step="any"
-                                value={obj.frontArea || ""}
-                                onChange={(e) =>
-                                  doForm.updateDo(obj.idDo || String(idx + 1), {
-                                    frontArea: e.target.value,
-                                  })
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  doErr.frontArea
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                m²
+                          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded bg-[#0f3d64] text-white text-[11px] font-bold flex items-center justify-center">
+                                {idx + 1}
+                              </span>
+                              <span className="text-xs font-semibold text-gray-900">
+                                Direct Object
+                              </span>
+                              <span className="text-[11px] text-gray-500">
+                                {obj.type === "directional"
+                                  ? "Directional"
+                                  : "Omni"}{" "}
+                                Type
                               </span>
                             </div>
-                            {doErr.frontArea && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{doErr.frontArea}
-                              </p>
-                            )}
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleCopyDo(obj)}
+                                title="Copy"
+                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePasteDo(idx)}
+                                disabled={!doClipboard}
+                                title="Paste"
+                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                              </button>
+                              {SHOW_RESET_TO_DEFAULT && isDoModified(obj, idx) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetDo(idx)}
+                                  className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+                                  title="Reset to default spec"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>Reset to default spec</span>
+                                </button>
+                              )}
+                              {!isStandard && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteDo(idx)}
+                                  className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
                           </div>
 
-                          {/* Side Area - only if Directional */}
-                          {obj.type === "directional" && (
+                          <div
+                            className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${obj.type === "directional"
+                              ? "xl:grid-cols-9"
+                              : "xl:grid-cols-7"
+                              } gap-2.5`}
+                          >
+                            {/* Object Name */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Side Area">
-                                Side Area <span className="text-red-500 font-semibold">*</span>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Name">
+                                Object Name <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <input
+                                id={`do-${obj.idDo || obj.id || idx + 1}-name`}
+                                type="text"
+                                value={obj.name || ""}
+                                onChange={(e) =>
+                                  doForm.updateDo(obj.idDo || String(idx + 1), {
+                                    name: e.target.value,
+                                  })
+                                }
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.name
+                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                  }`}
+                              />
+                              {doErr.name && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{doErr.name}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Object Type */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Type">
+                                Object Type <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <select
+                                id={`do-${obj.idDo || obj.id || idx + 1}-type`}
+                                value={obj.type || "omni"}
+                                onChange={(e) =>
+                                  doForm.updateDo(obj.idDo || String(idx + 1), {
+                                    type: e.target.value,
+                                  })
+                                }
+                                className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${doErr.type
+                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                  }`}
+                              >
+                                {OBJECT_TYPE_OPTIONS.map((opt) => (
+                                  <option key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                              {doErr.type && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{doErr.type}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Front Area */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Front Area">
+                                Front Area <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
                                 <input
-                                  id={`do-${obj.idDo || obj.id || idx + 1}-sideArea`}
+                                  id={`do-${obj.idDo || obj.id || idx + 1}-frontArea`}
                                   type="number"
                                   step="any"
-                                  value={obj.sideArea || ""}
+                                  value={obj.frontArea || ""}
                                   onChange={(e) =>
                                     doForm.updateDo(obj.idDo || String(idx + 1), {
-                                      sideArea: e.target.value,
+                                      frontArea: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    doErr.sideArea
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.frontArea
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   m²
                                 </span>
                               </div>
-                              {doErr.sideArea && (
+                              {doErr.frontArea && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
-                                  *{doErr.sideArea}
+                                  *{doErr.frontArea}
                                 </p>
                               )}
                             </div>
-                          )}
 
-                          {/* Weight */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Weight">
-                              Weight <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`do-${obj.idDo || obj.id || idx + 1}-weight`}
-                                type="number"
-                                step="any"
-                                value={obj.weight || ""}
-                                onChange={(e) =>
-                                  doForm.updateDo(obj.idDo || String(idx + 1), {
-                                    weight: e.target.value,
-                                  })
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  doErr.weight
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                kg
-                              </span>
-                            </div>
-                            {doErr.weight && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{doErr.weight}
-                              </p>
+                            {/* Side Area - only if Directional */}
+                            {obj.type === "directional" && (
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Side Area">
+                                  Side Area <span className="text-red-500 font-semibold">*</span>
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    id={`do-${obj.idDo || obj.id || idx + 1}-sideArea`}
+                                    type="number"
+                                    step="any"
+                                    value={obj.sideArea || ""}
+                                    onChange={(e) =>
+                                      doForm.updateDo(obj.idDo || String(idx + 1), {
+                                        sideArea: e.target.value,
+                                      })
+                                    }
+                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.sideArea
+                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                      }`}
+                                  />
+                                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                    m²
+                                  </span>
+                                </div>
+                                {doErr.sideArea && (
+                                  <p className="text-[10px] text-red-500 mt-1 truncate">
+                                    *{doErr.sideArea}
+                                  </p>
+                                )}
+                              </div>
                             )}
-                          </div>
 
-                          {/* Height */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Height">
-                              Height <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`do-${obj.idDo || obj.id || idx + 1}-zHeight`}
-                                type="number"
-                                value={obj.zHeight || ""}
-                                onChange={(e) =>
-                                  doForm.updateDo(obj.idDo || String(idx + 1), {
-                                    zHeight: e.target.value,
-                                  })
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  doErr.zHeight
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                mm
-                              </span>
-                            </div>
-                            {doErr.zHeight && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{doErr.zHeight}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* nnC */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
-                              nnC <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <input
-                              id={`do-${obj.idDo || obj.id || idx + 1}-nnC`}
-                              type="number"
-                              step="any"
-                              value={obj.nnC || "1"}
-                              onChange={(e) =>
-                                doForm.updateDo(obj.idDo || String(idx + 1), {
-                                  nnC: e.target.value,
-                                })
-                              }
-                              className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                doErr.nnC
-                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                              }`}
-                            />
-                            {doErr.nnC && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{doErr.nnC}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Quantity */}
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
-                              Quantity <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`do-${obj.idDo || obj.id || idx + 1}-quantity`}
-                                type="number"
-                                min="1"
-                                value={obj.quantity || "1"}
-                                onChange={(e) =>
-                                  doForm.updateDo(obj.idDo || String(idx + 1), {
-                                    quantity: e.target.value,
-                                  })
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  doErr.quantity
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                pcs
-                              </span>
-                            </div>
-                            {doErr.quantity && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{doErr.quantity}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Fix Angle - only if Directional */}
-                          {obj.type === "directional" && (
+                            {/* Weight */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Fix Angle">
-                                Fix Angle <span className="text-red-500 font-semibold">*</span>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Weight">
+                                Weight <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
                                 <input
-                                  id={`do-${obj.idDo || obj.id || idx + 1}-fixAngle`}
+                                  id={`do-${obj.idDo || obj.id || idx + 1}-weight`}
                                   type="number"
-                                  value={obj.fixAngle || "0"}
+                                  step="any"
+                                  value={obj.weight || ""}
                                   onChange={(e) =>
                                     doForm.updateDo(obj.idDo || String(idx + 1), {
-                                      fixAngle: e.target.value,
+                                      weight: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    doErr.fixAngle
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.weight
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                  deg
+                                  kg
                                 </span>
                               </div>
-                              {doErr.fixAngle && (
+                              {doErr.weight && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
-                                  *{doErr.fixAngle}
+                                  *{doErr.weight}
                                 </p>
                               )}
                             </div>
-                          )}
+
+                            {/* Height */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Height">
+                                Height <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`do-${obj.idDo || obj.id || idx + 1}-zHeight`}
+                                  type="number"
+                                  value={obj.zHeight || ""}
+                                  onChange={(e) =>
+                                    doForm.updateDo(obj.idDo || String(idx + 1), {
+                                      zHeight: e.target.value,
+                                    })
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.zHeight
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
+                              </div>
+                              {doErr.zHeight && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{doErr.zHeight}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* nnC */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
+                                nnC <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <input
+                                id={`do-${obj.idDo || obj.id || idx + 1}-nnC`}
+                                type="number"
+                                step="any"
+                                value={obj.nnC || "1"}
+                                onChange={(e) =>
+                                  doForm.updateDo(obj.idDo || String(idx + 1), {
+                                    nnC: e.target.value,
+                                  })
+                                }
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.nnC
+                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                  }`}
+                              />
+                              {doErr.nnC && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{doErr.nnC}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Quantity */}
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
+                                Quantity <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`do-${obj.idDo || obj.id || idx + 1}-quantity`}
+                                  type="number"
+                                  min="1"
+                                  value={obj.quantity || "1"}
+                                  onChange={(e) =>
+                                    doForm.updateDo(obj.idDo || String(idx + 1), {
+                                      quantity: e.target.value,
+                                    })
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.quantity
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  pcs
+                                </span>
+                              </div>
+                              {doErr.quantity && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{doErr.quantity}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Fix Angle - only if Directional */}
+                            {obj.type === "directional" && (
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Fix Angle">
+                                  Fix Angle <span className="text-red-500 font-semibold">*</span>
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    id={`do-${obj.idDo || obj.id || idx + 1}-fixAngle`}
+                                    type="number"
+                                    value={obj.fixAngle || "0"}
+                                    onChange={(e) =>
+                                      doForm.updateDo(obj.idDo || String(idx + 1), {
+                                        fixAngle: e.target.value,
+                                      })
+                                    }
+                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.fixAngle
+                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                      }`}
+                                  />
+                                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                    deg
+                                  </span>
+                                </div>
+                                {doErr.fixAngle && (
+                                  <p className="text-[10px] text-red-500 mt-1 truncate">
+                                    *{doErr.fixAngle}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
+                      );
                     })}
                   </div>
                 )}
@@ -2583,60 +2649,59 @@ export default function StructuralPage() {
                         {};
 
                       return (
-                      <div
-                        key={wire.idOhw || idx}
-                        className="p-4 rounded border border-gray-200 bg-white space-y-3 shadow-2xs"
-                      >
-                        <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded bg-[#0f3d64] text-white text-[11px] font-bold flex items-center justify-center">
-                              {idx + 1}
-                            </span>
-                            <span className="text-xs font-semibold text-gray-900">
-                              Overhead Wire
-                            </span>
+                        <div
+                          key={wire.idOhw || idx}
+                          className="p-4 rounded border border-gray-200 bg-white space-y-3 shadow-2xs"
+                        >
+                          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded bg-[#0f3d64] text-white text-[11px] font-bold flex items-center justify-center">
+                                {idx + 1}
+                              </span>
+                              <span className="text-xs font-semibold text-gray-900">
+                                Overhead Wire
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleCopyOhw(wire)}
+                                title="Copy"
+                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handlePasteOhw(idx)}
+                                disabled={!ohwClipboard}
+                                title="Paste"
+                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleResetOhw(idx)}
+                                className="px-3 py-1 border border-red-200 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                              >
+                                Reset
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteOhw(idx)}
+                                className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleCopyOhw(wire)}
-                              title="Copy"
-                              className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handlePasteOhw(idx)}
-                              disabled={!ohwClipboard}
-                              title="Paste"
-                              className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleResetOhw(idx)}
-                              className="px-3 py-1 border border-red-200 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
-                            >
-                              Reset
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteOhw(idx)}
-                              className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          {/* Row 1: Overhead Wire Name, Weight, Diameter, Height */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2.5">
+                            {/* 1. Overhead Wire Name */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Overhead Wire Name">
                                 Overhead Wire Name <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <input
@@ -2649,11 +2714,10 @@ export default function StructuralPage() {
                                     name: e.target.value,
                                   })
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  ohwErr.name
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.name
+                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                  }`}
                               />
                               {ohwErr.name && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -2662,8 +2726,9 @@ export default function StructuralPage() {
                               )}
                             </div>
 
+                            {/* 2. Weight */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Weight">
                                 Weight <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
@@ -2677,13 +2742,12 @@ export default function StructuralPage() {
                                       weight: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-12 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.weight
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-11 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.weight
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
-                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] font-medium pointer-events-none">
                                   kg/m
                                 </span>
                               </div>
@@ -2694,8 +2758,9 @@ export default function StructuralPage() {
                               )}
                             </div>
 
+                            {/* 3. Diameter */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Diameter">
                                 Diameter <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
@@ -2709,11 +2774,10 @@ export default function StructuralPage() {
                                       diameter: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.diameter
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.diameter
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -2726,8 +2790,9 @@ export default function StructuralPage() {
                               )}
                             </div>
 
+                            {/* 4. Height */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Height">
                                 Height <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
@@ -2741,11 +2806,10 @@ export default function StructuralPage() {
                                       zHeight: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.zHeight
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.zHeight
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -2757,12 +2821,10 @@ export default function StructuralPage() {
                                 </p>
                               )}
                             </div>
-                          </div>
 
-                          {/* Row 2: Span, Sagging Ratio, nnC, Fix Angle, Vertical Angle */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                            {/* 5. Span */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Span">
                                 Span <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
@@ -2776,11 +2838,10 @@ export default function StructuralPage() {
                                       span: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.span
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.span
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -2793,8 +2854,9 @@ export default function StructuralPage() {
                               )}
                             </div>
 
+                            {/* 6. Sagging Ratio */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Sagging Ratio">
                                 Sagging Ratio <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
@@ -2808,11 +2870,10 @@ export default function StructuralPage() {
                                       saggingRatio: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.saggingRatio
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-7 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.saggingRatio
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   %
@@ -2825,8 +2886,9 @@ export default function StructuralPage() {
                               )}
                             </div>
 
+                            {/* 7. nnC */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
                                 nnC <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <input
@@ -2839,11 +2901,10 @@ export default function StructuralPage() {
                                     nnC: e.target.value,
                                   })
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  ohwErr.nnC
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.nnC
+                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                  }`}
                               />
                               {ohwErr.nnC && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -2852,8 +2913,9 @@ export default function StructuralPage() {
                               )}
                             </div>
 
+                            {/* 8. Fix Angle */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Fix Angle">
                                 Fix Angle <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
@@ -2867,11 +2929,10 @@ export default function StructuralPage() {
                                       fixAngle: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.fixAngle
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.fixAngle
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   deg
@@ -2884,8 +2945,9 @@ export default function StructuralPage() {
                               )}
                             </div>
 
+                            {/* 9. Vertical Angle */}
                             <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate">
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Vertical Angle">
                                 Vertical Angle <span className="text-red-500 font-semibold">*</span>
                               </label>
                               <div className="relative">
@@ -2899,11 +2961,10 @@ export default function StructuralPage() {
                                       verticalAngle: e.target.value,
                                     })
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.verticalAngle
-                                      ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                      : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.verticalAngle
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   deg
@@ -2917,8 +2978,7 @@ export default function StructuralPage() {
                             </div>
                           </div>
                         </div>
-                      </div>
-                    );
+                      );
                     })}
                   </div>
                 )}
@@ -3014,796 +3074,777 @@ export default function StructuralPage() {
                         {};
 
                       return (
-                      <div
-                        key={arm.idArm || armIdx}
-                        className="p-4 rounded border border-gray-200 bg-white space-y-4 shadow-2xs"
-                      >
-                        {/* Arm Header Badge */}
-                        <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                          <div className="flex items-center gap-2">
-                            <span className="w-5 h-5 rounded bg-[#0f3d64] text-white text-[11px] font-bold flex items-center justify-center">
-                              {armIdx + 1}
-                            </span>
-                            <span className="text-xs font-semibold text-gray-900">
-                              Arm
-                            </span>
-                          </div>
+                        <div
+                          key={arm.idArm || armIdx}
+                          className="p-4 rounded border border-gray-200 bg-white space-y-4 shadow-2xs"
+                        >
+                          {/* Arm Header Badge */}
+                          <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                            <div className="flex items-center gap-2">
+                              <span className="w-5 h-5 rounded bg-[#0f3d64] text-white text-[11px] font-bold flex items-center justify-center">
+                                {armIdx + 1}
+                              </span>
+                              <span className="text-xs font-semibold text-gray-900">
+                                Arm
+                              </span>
+                            </div>
 
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleCopyArm(arm)}
-                              title="Copy"
-                              className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
-                            >
-                              <Copy className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handlePasteArm(armIdx)}
-                              disabled={!armClipboard}
-                              title="Paste"
-                              className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                            </button>
-                            {SHOW_RESET_TO_DEFAULT && isArmModified(arm, armIdx) && (
+                            <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
-                                onClick={() => handleResetArm(armIdx)}
-                                className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
-                                title="Reset to default spec"
+                                onClick={() => handleCopyArm(arm)}
+                                title="Copy"
+                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
                               >
-                                <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
-                                <span>Reset to default spec</span>
+                                <Copy className="w-3.5 h-3.5" />
                               </button>
-                            )}
-                            {!isStandard && (
                               <button
                                 type="button"
-                                onClick={() => handleDeleteArm(armIdx)}
-                                className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                                onClick={() => handlePasteArm(armIdx)}
+                                disabled={!armClipboard}
+                                title="Paste"
+                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
                               >
-                                Delete Arm
+                                <FileText className="w-3.5 h-3.5" />
                               </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Arm Input Fields */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-11 gap-2.5">
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Arm Name">
-                              Arm Name <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <input
-                              id={`arm-${arm.idArm || arm.id || armIdx + 1}-name`}
-                              type="text"
-                              value={arm.name || ""}
-                              onChange={(e) =>
-                                handleUpdateArmField(armIdx, "name", e.target.value)
-                              }
-                              className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                armErr.name
-                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                              }`}
-                            />
-                            {armErr.name && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.name}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Material">
-                              Material <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <select
-                              id={`arm-${arm.idArm || arm.id || armIdx + 1}-material`}
-                              value={arm.material || "STK400"}
-                              onChange={(e) =>
-                                handleUpdateArmField(armIdx, "material", e.target.value)
-                              }
-                              className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${
-                                armErr.material
-                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                              }`}
-                            >
-                              {MATERIAL_OPTIONS.map((m) => (
-                                <option key={m.value} value={m.value}>
-                                  {m.label}
-                                </option>
-                              ))}
-                            </select>
-                            {armErr.material && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.material}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Diameter">
-                              Diameter <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-diameter`}
-                                type="number"
-                                step="any"
-                                value={arm.diameter || ""}
-                                onChange={(e) =>
-                                  handleUpdateArmField(armIdx, "diameter", e.target.value)
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  armErr.diameter
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                mm
-                              </span>
-                            </div>
-                            {armErr.diameter && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.diameter}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Thickness">
-                              Thickness <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-thickness`}
-                                type="number"
-                                step="any"
-                                value={arm.thickness || ""}
-                                onChange={(e) =>
-                                  handleUpdateArmField(armIdx, "thickness", e.target.value)
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  armErr.thickness
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                mm
-                              </span>
-                            </div>
-                            {armErr.thickness && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.thickness}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Length">
-                              Length <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-length`}
-                                type="number"
-                                value={arm.length || ""}
-                                onChange={(e) =>
-                                  handleUpdateArmField(armIdx, "length", e.target.value)
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  armErr.length
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                mm
-                              </span>
-                            </div>
-                            {armErr.length && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.length}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Exp.Length">
-                              Exp.Length <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-expLength`}
-                                type="number"
-                                value={arm.expLength || ""}
-                                onChange={(e) =>
-                                  handleUpdateArmField(armIdx, "expLength", e.target.value)
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  armErr.expLength
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                mm
-                              </span>
-                            </div>
-                            {armErr.expLength && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.expLength}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Height">
-                              Height <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-zHeight`}
-                                type="number"
-                                value={arm.height ?? arm.zHeight ?? ""}
-                                onChange={(e) =>
-                                  handleUpdateArmField(armIdx, "height", e.target.value)
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  (armErr.zHeight || armErr.height)
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                mm
-                              </span>
-                            </div>
-                            {(armErr.zHeight || armErr.height) && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.zHeight || armErr.height}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="H-Distance">
-                              H-Distance <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-hDistance`}
-                                type="number"
-                                value={arm.hDistance || ""}
-                                onChange={(e) =>
-                                  handleUpdateArmField(armIdx, "hDistance", e.target.value)
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  armErr.hDistance
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                mm
-                              </span>
-                            </div>
-                            {armErr.hDistance && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.hDistance}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Fix Angle">
-                              Fix Angle <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-fixAngle`}
-                                type="number"
-                                value={arm.fixAngle || "0"}
-                                onChange={(e) =>
-                                  handleUpdateArmField(armIdx, "fixAngle", e.target.value)
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  armErr.fixAngle
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                deg
-                              </span>
-                            </div>
-                            {armErr.fixAngle && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.fixAngle}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
-                              nnC <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <input
-                              id={`arm-${arm.idArm || arm.id || armIdx + 1}-nnC`}
-                              type="number"
-                              step="any"
-                              value={arm.nnC || "0.7"}
-                              onChange={(e) =>
-                                handleUpdateArmField(armIdx, "nnC", e.target.value)
-                              }
-                              className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                armErr.nnC
-                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                              }`}
-                            />
-                            {armErr.nnC && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.nnC}
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
-                              Quantity <span className="text-red-500 font-semibold">*</span>
-                            </label>
-                            <div className="relative">
-                              <input
-                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-quantity`}
-                                type="number"
-                                min="1"
-                                value={arm.quantity || "1"}
-                                onChange={(e) =>
-                                  handleUpdateArmField(armIdx, "quantity", e.target.value)
-                                }
-                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  armErr.quantity
-                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
-                              />
-                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                pcs
-                              </span>
-                            </div>
-                            {armErr.quantity && (
-                              <p className="text-[10px] text-red-500 mt-1 truncate">
-                                *{armErr.quantity}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Nested Sub-section: Arm Objects */}
-                        <div className="mt-4 pt-4 border-t border-gray-100 bg-gray-50/50 p-3.5 rounded border border-gray-200/80">
-                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                            <div>
-                              <h4 className="text-xs font-semibold text-blue-900 flex items-center gap-1.5">
-                                <span className="w-1 h-3 bg-blue-500 rounded-full inline-block" />
-                                Arm Objects
-                              </h4>
+                              {SHOW_RESET_TO_DEFAULT && isArmModified(arm, armIdx) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetArm(armIdx)}
+                                  className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+                                  title="Reset to default spec"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>Reset to default spec</span>
+                                </button>
+                              )}
                               {!isStandard && (
-                                <p className="text-[11px] text-gray-500">
-                                  Configure up to 5 Arm Objects with their respective specifications.
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteArm(armIdx)}
+                                  className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                                >
+                                  Delete Arm
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Arm Input Fields */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 2xl:grid-cols-11 gap-2.5">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Arm Name">
+                                Arm Name <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <input
+                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-name`}
+                                type="text"
+                                value={arm.name || ""}
+                                onChange={(e) =>
+                                  handleUpdateArmField(armIdx, "name", e.target.value)
+                                }
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.name
+                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                  }`}
+                              />
+                              {armErr.name && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.name}
                                 </p>
                               )}
                             </div>
 
-                            {!isStandard && (
-                              <div className="flex items-center gap-2">
-                                <span className="px-2.5 py-0.5 rounded bg-white border border-gray-200 text-[11px] font-medium text-gray-700">
-                                  {(arm.armObjects || []).length} / 5 Objects
-                                </span>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Material">
+                                Material <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <select
+                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-material`}
+                                value={arm.material || "STK400"}
+                                onChange={(e) =>
+                                  handleUpdateArmField(armIdx, "material", e.target.value)
+                                }
+                                className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${armErr.material
+                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                  }`}
+                              >
+                                {MATERIAL_OPTIONS.map((m) => (
+                                  <option key={m.value} value={m.value}>
+                                    {m.label}
+                                  </option>
+                                ))}
+                              </select>
+                              {armErr.material && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.material}
+                                </p>
+                              )}
+                            </div>
 
-                                <div className="flex items-center gap-1.5">
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="5"
-                                    value={quickAoCounts[armIdx] || ""}
-                                    onChange={(e) =>
-                                      setQuickAoCounts((p) => ({
-                                        ...p,
-                                        [armIdx]: e.target.value,
-                                      }))
-                                    }
-                                    placeholder="Number of objects"
-                                    className="w-36 px-2 py-0.5 text-xs border border-gray-300 rounded outline-none focus:border-gray-600 bg-white"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => handleQuickAoCountOk(armIdx)}
-                                    className="px-2.5 py-0.5 text-xs font-medium border border-gray-300 rounded hover:bg-gray-100 text-gray-700 cursor-pointer"
-                                  >
-                                    OK
-                                  </button>
-                                </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Diameter">
+                                Diameter <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`arm-${arm.idArm || arm.id || armIdx + 1}-diameter`}
+                                  type="number"
+                                  step="any"
+                                  value={arm.diameter || ""}
+                                  onChange={(e) =>
+                                    handleUpdateArmField(armIdx, "diameter", e.target.value)
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.diameter
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
                               </div>
-                            )}
+                              {armErr.diameter && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.diameter}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Thickness">
+                                Thickness <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`arm-${arm.idArm || arm.id || armIdx + 1}-thickness`}
+                                  type="number"
+                                  step="any"
+                                  value={arm.thickness || ""}
+                                  onChange={(e) =>
+                                    handleUpdateArmField(armIdx, "thickness", e.target.value)
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.thickness
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
+                              </div>
+                              {armErr.thickness && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.thickness}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Length">
+                                Length <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`arm-${arm.idArm || arm.id || armIdx + 1}-length`}
+                                  type="number"
+                                  value={arm.length || ""}
+                                  onChange={(e) =>
+                                    handleUpdateArmField(armIdx, "length", e.target.value)
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.length
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
+                              </div>
+                              {armErr.length && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.length}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Exp.Length">
+                                Exp.Length <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`arm-${arm.idArm || arm.id || armIdx + 1}-expLength`}
+                                  type="number"
+                                  value={arm.expLength || ""}
+                                  onChange={(e) =>
+                                    handleUpdateArmField(armIdx, "expLength", e.target.value)
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.expLength
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
+                              </div>
+                              {armErr.expLength && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.expLength}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Height">
+                                Height <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`arm-${arm.idArm || arm.id || armIdx + 1}-zHeight`}
+                                  type="number"
+                                  value={arm.height ?? arm.zHeight ?? ""}
+                                  onChange={(e) =>
+                                    handleUpdateArmField(armIdx, "height", e.target.value)
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${(armErr.zHeight || armErr.height)
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
+                              </div>
+                              {(armErr.zHeight || armErr.height) && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.zHeight || armErr.height}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="H-Distance">
+                                H-Distance <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`arm-${arm.idArm || arm.id || armIdx + 1}-hDistance`}
+                                  type="number"
+                                  value={arm.hDistance || ""}
+                                  onChange={(e) =>
+                                    handleUpdateArmField(armIdx, "hDistance", e.target.value)
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.hDistance
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  mm
+                                </span>
+                              </div>
+                              {armErr.hDistance && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.hDistance}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Fix Angle">
+                                Fix Angle <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`arm-${arm.idArm || arm.id || armIdx + 1}-fixAngle`}
+                                  type="number"
+                                  value={arm.fixAngle || "0"}
+                                  onChange={(e) =>
+                                    handleUpdateArmField(armIdx, "fixAngle", e.target.value)
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.fixAngle
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  deg
+                                </span>
+                              </div>
+                              {armErr.fixAngle && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.fixAngle}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
+                                nnC <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <input
+                                id={`arm-${arm.idArm || arm.id || armIdx + 1}-nnC`}
+                                type="number"
+                                step="any"
+                                value={arm.nnC || "0.7"}
+                                onChange={(e) =>
+                                  handleUpdateArmField(armIdx, "nnC", e.target.value)
+                                }
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.nnC
+                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                  }`}
+                              />
+                              {armErr.nnC && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.nnC}
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
+                                Quantity <span className="text-red-500 font-semibold">*</span>
+                              </label>
+                              <div className="relative">
+                                <input
+                                  id={`arm-${arm.idArm || arm.id || armIdx + 1}-quantity`}
+                                  type="number"
+                                  min="1"
+                                  value={arm.quantity || "1"}
+                                  onChange={(e) =>
+                                    handleUpdateArmField(armIdx, "quantity", e.target.value)
+                                  }
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.quantity
+                                    ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                    : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                    }`}
+                                />
+                                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                  pcs
+                                </span>
+                              </div>
+                              {armErr.quantity && (
+                                <p className="text-[10px] text-red-500 mt-1 truncate">
+                                  *{armErr.quantity}
+                                </p>
+                              )}
+                            </div>
                           </div>
 
-                          {(!arm.armObjects || arm.armObjects.length === 0) ? (
-                            <div className="py-6 text-center text-xs text-gray-400 border border-gray-200 rounded bg-white select-none">
-                              No Arm objects added yet
-                            </div>
-                          ) : (
-                            <div className="space-y-3">
-                              {arm.armObjects.map((ao, aoIdx) => {
-                                const aoCompoundId = `${arm.idArm || armIdx + 1}_${ao.idAo || aoIdx + 1}`;
-                                const aoErr =
-                                  armForm.aoErrors?.[aoCompoundId] ||
-                                  armForm.aoErrors?.[ao.idAo] ||
-                                  armForm.aoErrors?.[ao.id] ||
-                                  armForm.aoErrors?.[String(aoIdx + 1)] ||
-                                  {};
+                          {/* Nested Sub-section: Arm Objects */}
+                          <div className="mt-4 pt-4 border-t border-gray-100 bg-gray-50/50 p-3.5 rounded border border-gray-200/80">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                              <div>
+                                <h4 className="text-xs font-semibold text-blue-900 flex items-center gap-1.5">
+                                  <span className="w-1 h-3 bg-blue-500 rounded-full inline-block" />
+                                  Arm Objects
+                                </h4>
+                                {!isStandard && (
+                                  <p className="text-[11px] text-gray-500">
+                                    Configure up to 5 Arm Objects with their respective specifications.
+                                  </p>
+                                )}
+                              </div>
 
-                                return (
-                                <div
-                                  key={ao.idAo || aoIdx}
-                                  className="p-3.5 rounded border border-gray-200 bg-white space-y-3 shadow-2xs"
-                                >
-                                  <div className="flex items-center justify-between pb-2 border-b border-gray-100">
-                                    <div className="flex items-center gap-2">
-                                      <span className="px-1.5 py-0.5 rounded bg-[#0f3d64] text-white text-[10px] font-bold">
-                                        {armIdx + 1}.{aoIdx + 1}
-                                      </span>
-                                      <span className="text-xs font-semibold text-gray-900">
-                                        Arm Object
-                                      </span>
-                                      <span className="text-[10px] text-gray-500">
-                                        {ao.type === "directional" ? "Directional" : "Omni"} Type
-                                      </span>
-                                    </div>
+                              {!isStandard && (
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2.5 py-0.5 rounded bg-white border border-gray-200 text-[11px] font-medium text-gray-700">
+                                    {(arm.armObjects || []).length} / 5 Objects
+                                  </span>
 
-                                    <div className="flex items-center gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleCopyAo(ao)}
-                                        title="Copy"
-                                        className="p-1 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
-                                      >
-                                        <Copy className="w-3 h-3" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handlePasteAo(armIdx, aoIdx)}
-                                        disabled={!aoClipboard}
-                                        title="Paste"
-                                        className="p-1 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
-                                      >
-                                        <FileText className="w-3 h-3" />
-                                      </button>
-                                      {SHOW_RESET_TO_DEFAULT && isAoModified(armIdx, ao, aoIdx) && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleResetAo(armIdx, aoIdx)}
-                                          className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
-                                          title="Reset to default spec"
-                                        >
-                                          <RotateCcw className="w-3 h-3 text-blue-600" />
-                                          <span>Reset to default spec</span>
-                                        </button>
-                                      )}
-                                      {!isStandard && (
-                                        <button
-                                          type="button"
-                                          onClick={() => handleDeleteAo(armIdx, aoIdx)}
-                                          className="px-2 py-0.5 border border-red-300 rounded text-red-600 text-[11px] font-medium hover:bg-red-50 cursor-pointer"
-                                        >
-                                          Delete Object
-                                        </button>
-                                      )}
-                                    </div>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      max="5"
+                                      value={quickAoCounts[armIdx] || ""}
+                                      onChange={(e) =>
+                                        setQuickAoCounts((p) => ({
+                                          ...p,
+                                          [armIdx]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder="Number of objects"
+                                      className="w-36 px-2 py-0.5 text-xs border border-gray-300 rounded outline-none focus:border-gray-600 bg-white"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleQuickAoCountOk(armIdx)}
+                                      className="px-2.5 py-0.5 text-xs font-medium border border-gray-300 rounded hover:bg-gray-100 text-gray-700 cursor-pointer"
+                                    >
+                                      OK
+                                    </button>
                                   </div>
+                                </div>
+                              )}
+                            </div>
 
-                                  <div
-                                    className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${ao.type === "directional"
-                                      ? "xl:grid-cols-8"
-                                      : "xl:grid-cols-7"
-                                      } gap-2.5`}
-                                  >
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Name">
-                                        Object Name <span className="text-red-500 font-semibold">*</span>
-                                      </label>
-                                      <input
-                                        id={`arm-${aoCompoundId}-name`}
-                                        type="text"
-                                        value={ao.name || ""}
-                                        onChange={(e) =>
-                                          handleUpdateArmObjectField(
-                                            armIdx,
-                                            aoIdx,
-                                            "name",
-                                            e.target.value,
-                                          )
-                                        }
-                                        className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                          aoErr.name
-                                            ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                            : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                        }`}
-                                      />
-                                      {aoErr.name && (
-                                        <p className="text-[10px] text-red-500 mt-1 truncate">
-                                          *{aoErr.name}
-                                        </p>
-                                      )}
-                                    </div>
+                            {(!arm.armObjects || arm.armObjects.length === 0) ? (
+                              <div className="py-6 text-center text-xs text-gray-400 border border-gray-200 rounded bg-white select-none">
+                                No Arm objects added yet
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {arm.armObjects.map((ao, aoIdx) => {
+                                  const aoCompoundId = `${arm.idArm || armIdx + 1}_${ao.idAo || aoIdx + 1}`;
+                                  const aoErr =
+                                    armForm.aoErrors?.[aoCompoundId] ||
+                                    armForm.aoErrors?.[ao.idAo] ||
+                                    armForm.aoErrors?.[ao.id] ||
+                                    armForm.aoErrors?.[String(aoIdx + 1)] ||
+                                    {};
 
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Type">
-                                        Object Type <span className="text-red-500 font-semibold">*</span>
-                                      </label>
-                                      <select
-                                        id={`arm-${aoCompoundId}-type`}
-                                        value={ao.type || "omni"}
-                                        onChange={(e) =>
-                                          handleUpdateArmObjectField(
-                                            armIdx,
-                                            aoIdx,
-                                            "type",
-                                            e.target.value,
-                                          )
-                                        }
-                                        className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${
-                                          aoErr.type
-                                            ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                            : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                        }`}
-                                      >
-                                        {OBJECT_TYPE_OPTIONS.map((opt) => (
-                                          <option key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      {aoErr.type && (
-                                        <p className="text-[10px] text-red-500 mt-1 truncate">
-                                          *{aoErr.type}
-                                        </p>
-                                      )}
-                                    </div>
+                                  return (
+                                    <div
+                                      key={ao.idAo || aoIdx}
+                                      className="p-3.5 rounded border border-gray-200 bg-white space-y-3 shadow-2xs"
+                                    >
+                                      <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                                        <div className="flex items-center gap-2">
+                                          <span className="px-1.5 py-0.5 rounded bg-[#0f3d64] text-white text-[10px] font-bold">
+                                            {armIdx + 1}.{aoIdx + 1}
+                                          </span>
+                                          <span className="text-xs font-semibold text-gray-900">
+                                            Arm Object
+                                          </span>
+                                          <span className="text-[10px] text-gray-500">
+                                            {ao.type === "directional" ? "Directional" : "Omni"} Type
+                                          </span>
+                                        </div>
 
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Front Area">
-                                        Front Area <span className="text-red-500 font-semibold">*</span>
-                                      </label>
-                                      <div className="relative">
-                                        <input
-                                          id={`arm-${aoCompoundId}-frontArea`}
-                                          type="number"
-                                          step="any"
-                                          value={ao.frontArea || ""}
-                                          onChange={(e) =>
-                                            handleUpdateArmObjectField(
-                                              armIdx,
-                                              aoIdx,
-                                              "frontArea",
-                                              e.target.value,
-                                            )
-                                          }
-                                          className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                            aoErr.frontArea
-                                              ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                              : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                          }`}
-                                        />
-                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                          m²
-                                        </span>
+                                        <div className="flex items-center gap-1.5">
+                                          <button
+                                            type="button"
+                                            onClick={() => handleCopyAo(ao)}
+                                            title="Copy"
+                                            className="p-1 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
+                                          >
+                                            <Copy className="w-3 h-3" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => handlePasteAo(armIdx, aoIdx)}
+                                            disabled={!aoClipboard}
+                                            title="Paste"
+                                            className="p-1 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
+                                          >
+                                            <FileText className="w-3 h-3" />
+                                          </button>
+                                          {SHOW_RESET_TO_DEFAULT && isAoModified(armIdx, ao, aoIdx) && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleResetAo(armIdx, aoIdx)}
+                                              className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
+                                              title="Reset to default spec"
+                                            >
+                                              <RotateCcw className="w-3 h-3 text-blue-600" />
+                                              <span>Reset to default spec</span>
+                                            </button>
+                                          )}
+                                          {!isStandard && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleDeleteAo(armIdx, aoIdx)}
+                                              className="px-2 py-0.5 border border-red-300 rounded text-red-600 text-[11px] font-medium hover:bg-red-50 cursor-pointer"
+                                            >
+                                              Delete Object
+                                            </button>
+                                          )}
+                                        </div>
                                       </div>
-                                      {aoErr.frontArea && (
-                                        <p className="text-[10px] text-red-500 mt-1 truncate">
-                                          *{aoErr.frontArea}
-                                        </p>
-                                      )}
-                                    </div>
 
-                                    {/* Side Area - only if Directional */}
-                                    {ao.type === "directional" && (
-                                      <div>
-                                        <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Side Area">
-                                          Side Area <span className="text-red-500 font-semibold">*</span>
-                                        </label>
-                                        <div className="relative">
+                                      <div
+                                        className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${ao.type === "directional"
+                                          ? "xl:grid-cols-8"
+                                          : "xl:grid-cols-7"
+                                          } gap-2.5`}
+                                      >
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Name">
+                                            Object Name <span className="text-red-500 font-semibold">*</span>
+                                          </label>
                                           <input
-                                            id={`arm-${aoCompoundId}-sideArea`}
-                                            type="number"
-                                            step="any"
-                                            value={ao.sideArea || ""}
+                                            id={`arm-${aoCompoundId}-name`}
+                                            type="text"
+                                            value={ao.name || ""}
                                             onChange={(e) =>
                                               handleUpdateArmObjectField(
                                                 armIdx,
                                                 aoIdx,
-                                                "sideArea",
+                                                "name",
                                                 e.target.value,
                                               )
                                             }
-                                            className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                              aoErr.sideArea
+                                            className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.name
+                                              ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                              : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                              }`}
+                                          />
+                                          {aoErr.name && (
+                                            <p className="text-[10px] text-red-500 mt-1 truncate">
+                                              *{aoErr.name}
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Object Type">
+                                            Object Type <span className="text-red-500 font-semibold">*</span>
+                                          </label>
+                                          <select
+                                            id={`arm-${aoCompoundId}-type`}
+                                            value={ao.type || "omni"}
+                                            onChange={(e) =>
+                                              handleUpdateArmObjectField(
+                                                armIdx,
+                                                aoIdx,
+                                                "type",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${aoErr.type
+                                              ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                              : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                              }`}
+                                          >
+                                            {OBJECT_TYPE_OPTIONS.map((opt) => (
+                                              <option key={opt.value} value={opt.value}>
+                                                {opt.label}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          {aoErr.type && (
+                                            <p className="text-[10px] text-red-500 mt-1 truncate">
+                                              *{aoErr.type}
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Front Area">
+                                            Front Area <span className="text-red-500 font-semibold">*</span>
+                                          </label>
+                                          <div className="relative">
+                                            <input
+                                              id={`arm-${aoCompoundId}-frontArea`}
+                                              type="number"
+                                              step="any"
+                                              value={ao.frontArea || ""}
+                                              onChange={(e) =>
+                                                handleUpdateArmObjectField(
+                                                  armIdx,
+                                                  aoIdx,
+                                                  "frontArea",
+                                                  e.target.value,
+                                                )
+                                              }
+                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.frontArea
                                                 ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                                 : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                            }`}
-                                          />
-                                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                            m²
-                                          </span>
+                                                }`}
+                                            />
+                                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                              m²
+                                            </span>
+                                          </div>
+                                          {aoErr.frontArea && (
+                                            <p className="text-[10px] text-red-500 mt-1 truncate">
+                                              *{aoErr.frontArea}
+                                            </p>
+                                          )}
                                         </div>
-                                        {aoErr.sideArea && (
-                                          <p className="text-[10px] text-red-500 mt-1 truncate">
-                                            *{aoErr.sideArea}
-                                          </p>
+
+                                        {/* Side Area - only if Directional */}
+                                        {ao.type === "directional" && (
+                                          <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Side Area">
+                                              Side Area <span className="text-red-500 font-semibold">*</span>
+                                            </label>
+                                            <div className="relative">
+                                              <input
+                                                id={`arm-${aoCompoundId}-sideArea`}
+                                                type="number"
+                                                step="any"
+                                                value={ao.sideArea || ""}
+                                                onChange={(e) =>
+                                                  handleUpdateArmObjectField(
+                                                    armIdx,
+                                                    aoIdx,
+                                                    "sideArea",
+                                                    e.target.value,
+                                                  )
+                                                }
+                                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.sideArea
+                                                  ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                                  : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                                  }`}
+                                              />
+                                              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                                m²
+                                              </span>
+                                            </div>
+                                            {aoErr.sideArea && (
+                                              <p className="text-[10px] text-red-500 mt-1 truncate">
+                                                *{aoErr.sideArea}
+                                              </p>
+                                            )}
+                                          </div>
                                         )}
-                                      </div>
-                                    )}
 
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Weight">
-                                        Weight <span className="text-red-500 font-semibold">*</span>
-                                      </label>
-                                      <div className="relative">
-                                        <input
-                                          id={`arm-${aoCompoundId}-weight`}
-                                          type="number"
-                                          step="any"
-                                          value={ao.weight || ""}
-                                          onChange={(e) =>
-                                            handleUpdateArmObjectField(
-                                              armIdx,
-                                              aoIdx,
-                                              "weight",
-                                              e.target.value,
-                                            )
-                                          }
-                                          className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                            aoErr.weight
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Weight">
+                                            Weight <span className="text-red-500 font-semibold">*</span>
+                                          </label>
+                                          <div className="relative">
+                                            <input
+                                              id={`arm-${aoCompoundId}-weight`}
+                                              type="number"
+                                              step="any"
+                                              value={ao.weight || ""}
+                                              onChange={(e) =>
+                                                handleUpdateArmObjectField(
+                                                  armIdx,
+                                                  aoIdx,
+                                                  "weight",
+                                                  e.target.value,
+                                                )
+                                              }
+                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.weight
+                                                ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                                : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                                }`}
+                                            />
+                                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                              kg
+                                            </span>
+                                          </div>
+                                          {aoErr.weight && (
+                                            <p className="text-[10px] text-red-500 mt-1 truncate">
+                                              *{aoErr.weight}
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="H-Distance">
+                                            H-Distance <span className="text-red-500 font-semibold">*</span>
+                                          </label>
+                                          <div className="relative">
+                                            <input
+                                              id={`arm-${aoCompoundId}-hDistance`}
+                                              type="number"
+                                              value={ao.hDistance || ""}
+                                              onChange={(e) =>
+                                                handleUpdateArmObjectField(
+                                                  armIdx,
+                                                  aoIdx,
+                                                  "hDistance",
+                                                  e.target.value,
+                                                )
+                                              }
+                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.hDistance
+                                                ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                                : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                                }`}
+                                            />
+                                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                              mm
+                                            </span>
+                                          </div>
+                                          {aoErr.hDistance && (
+                                            <p className="text-[10px] text-red-500 mt-1 truncate">
+                                              *{aoErr.hDistance}
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
+                                            nnC <span className="text-red-500 font-semibold">*</span>
+                                          </label>
+                                          <input
+                                            id={`arm-${aoCompoundId}-nnC`}
+                                            type="number"
+                                            step="any"
+                                            value={ao.nnC || "1"}
+                                            onChange={(e) =>
+                                              handleUpdateArmObjectField(
+                                                armIdx,
+                                                aoIdx,
+                                                "nnC",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.nnC
                                               ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                               : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                          }`}
-                                        />
-                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                          kg
-                                        </span>
+                                              }`}
+                                          />
+                                          {aoErr.nnC && (
+                                            <p className="text-[10px] text-red-500 mt-1 truncate">
+                                              *{aoErr.nnC}
+                                            </p>
+                                          )}
+                                        </div>
+
+                                        <div>
+                                          <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
+                                            Quantity <span className="text-red-500 font-semibold">*</span>
+                                          </label>
+                                          <div className="relative">
+                                            <input
+                                              id={`arm-${aoCompoundId}-quantity`}
+                                              type="number"
+                                              min="1"
+                                              value={ao.quantity || "1"}
+                                              onChange={(e) =>
+                                                handleUpdateArmObjectField(
+                                                  armIdx,
+                                                  aoIdx,
+                                                  "quantity",
+                                                  e.target.value,
+                                                )
+                                              }
+                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.quantity
+                                                ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
+                                                : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
+                                                }`}
+                                            />
+                                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
+                                              pcs
+                                            </span>
+                                          </div>
+                                          {aoErr.quantity && (
+                                            <p className="text-[10px] text-red-500 mt-1 truncate">
+                                              *{aoErr.quantity}
+                                            </p>
+                                          )}
+                                        </div>
                                       </div>
-                                      {aoErr.weight && (
-                                        <p className="text-[10px] text-red-500 mt-1 truncate">
-                                          *{aoErr.weight}
-                                        </p>
-                                      )}
                                     </div>
+                                  );
+                                })}
+                              </div>
+                            )}
 
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="H-Distance">
-                                        H-Distance <span className="text-red-500 font-semibold">*</span>
-                                      </label>
-                                      <div className="relative">
-                                        <input
-                                          id={`arm-${aoCompoundId}-hDistance`}
-                                          type="number"
-                                          value={ao.hDistance || ""}
-                                          onChange={(e) =>
-                                            handleUpdateArmObjectField(
-                                              armIdx,
-                                              aoIdx,
-                                              "hDistance",
-                                              e.target.value,
-                                            )
-                                          }
-                                          className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                            aoErr.hDistance
-                                              ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                              : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                          }`}
-                                        />
-                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                          mm
-                                        </span>
-                                      </div>
-                                      {aoErr.hDistance && (
-                                        <p className="text-[10px] text-red-500 mt-1 truncate">
-                                          *{aoErr.hDistance}
-                                        </p>
-                                      )}
-                                    </div>
-
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="nnC">
-                                        nnC <span className="text-red-500 font-semibold">*</span>
-                                      </label>
-                                      <input
-                                        id={`arm-${aoCompoundId}-nnC`}
-                                        type="number"
-                                        step="any"
-                                        value={ao.nnC || "1"}
-                                        onChange={(e) =>
-                                          handleUpdateArmObjectField(
-                                            armIdx,
-                                            aoIdx,
-                                            "nnC",
-                                            e.target.value,
-                                          )
-                                        }
-                                        className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                          aoErr.nnC
-                                            ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                            : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                        }`}
-                                      />
-                                      {aoErr.nnC && (
-                                        <p className="text-[10px] text-red-500 mt-1 truncate">
-                                          *{aoErr.nnC}
-                                        </p>
-                                      )}
-                                    </div>
-
-                                    <div>
-                                      <label className="block text-xs font-medium text-gray-700 mb-1.5 truncate" title="Quantity">
-                                        Quantity <span className="text-red-500 font-semibold">*</span>
-                                      </label>
-                                      <div className="relative">
-                                        <input
-                                          id={`arm-${aoCompoundId}-quantity`}
-                                          type="number"
-                                          min="1"
-                                          value={ao.quantity || "1"}
-                                          onChange={(e) =>
-                                            handleUpdateArmObjectField(
-                                              armIdx,
-                                              aoIdx,
-                                              "quantity",
-                                              e.target.value,
-                                            )
-                                          }
-                                          className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                            aoErr.quantity
-                                              ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
-                                              : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                          }`}
-                                        />
-                                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
-                                          pcs
-                                        </span>
-                                      </div>
-                                      {aoErr.quantity && (
-                                        <p className="text-[10px] text-red-500 mt-1 truncate">
-                                          *{aoErr.quantity}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                              })}
-                            </div>
-                          )}
-
-                          {/* Add Arm Object Button */}
-                          {!isStandard && (arm.armObjects || []).length < 5 && (
-                            <button
-                              type="button"
-                              onClick={() => handleAddAo(armIdx)}
-                              className="w-full mt-3 py-2 rounded border border-dashed border-gray-300 text-gray-700 font-medium text-xs hover:border-gray-400 hover:bg-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              <Plus className="w-3.5 h-3.5" />
-                              <span>Add Object</span>
-                            </button>
-                          )}
+                            {/* Add Arm Object Button */}
+                            {!isStandard && (arm.armObjects || []).length < 5 && (
+                              <button
+                                type="button"
+                                onClick={() => handleAddAo(armIdx)}
+                                className="w-full mt-3 py-2 rounded border border-dashed border-gray-300 text-gray-700 font-medium text-xs hover:border-gray-400 hover:bg-white transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>Add Object</span>
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    );
+                      );
                     })}
                   </div>
                 )}
@@ -3878,8 +3919,8 @@ export default function StructuralPage() {
         </button>
       </div>
 
-      {/* ── CALCULATION RESULTS TABLE (Visible upon calculation, below action buttons) ── */}
-      {calculation.isCalculated && (
+      {/* ── CALCULATION RESULTS TABLE & SCHEMATIC PREVIEW (Visible upon calculation, below action buttons) ── */}
+      {hasCalculationResults && (
         <div
           ref={resultsTableRef}
           id="calculation-results-section"
@@ -3890,8 +3931,26 @@ export default function StructuralPage() {
             display={calculation.displayResult}
             calculationKey={calculation.calculationKey}
           />
+
+          {/* ── SCHEMATIC PREVIEW CARD (Below Results Table) ── */}
+          <SchematicPreviewCard
+            svg={previewSchematicSvg}
+            isGenerating={isSchematicGenerating}
+            isReady={isSchematicReady}
+          />
         </div>
       )}
+
+      {/* Schematic SVG-Edit Modal (Iframe always mounted & ready in background) */}
+      <SchematicEditorModal
+        isOpen={isSchematicEditorOpen}
+        onClose={() => setIsSchematicEditorOpen(false)}
+        iframeRef={schematicIframeRef}
+        schematicUrl={DEFAULT_SCHEMATIC_URL}
+        onOpenEditor={openSchematicEditor}
+        onReset={handleRegenerateSchematic}
+        isEdited={Boolean(schematicData?.editedSvg)}
+      />
 
       {/* Toast Modal for feedback/notifications */}
       <ToastModal

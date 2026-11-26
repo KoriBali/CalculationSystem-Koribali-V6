@@ -7,6 +7,7 @@ const toNumber = (_, val) =>
 export const PoleConfigSchema = (condition = {}) => {
   const isEmbedment =
     condition?.installationPole === "embedment" ||
+    condition?.groundPosition === "embedment" ||
     (condition?.baseplateEnabled === false && condition?.installationPole !== "baseplate");
 
   return yup.object({

@@ -154,13 +154,8 @@ export function usePoleCalculation({
           setIsCalculated(false);
           setIsInputsChanged(true);
           hasCalculatedRef.current = false;
-          setResults([]);
-          setDisplayResult(null);
-          setShowResults(false);
+          // Keep previous results and schematic visible so user can still reference them while editing inputs
           sessionStorage.removeItem(`${projectType}_isCalculatedPole`);
-          sessionStorage.removeItem(`${projectType}_results`);
-          sessionStorage.removeItem(`${projectType}_displayResult`);
-          sessionStorage.removeItem(`${projectType}_calculatedInputsFingerprint`);
           notifyCalculationProgressChanged();
         }
       }
@@ -201,6 +196,7 @@ export function usePoleCalculation({
     notifyCalculationProgressChanged();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    condition,
     poleForm.poles,
     directObjectForm.directObjects,
     ohwForm.overheadWires,
@@ -567,6 +563,7 @@ export function usePoleCalculation({
     sessionStorage.removeItem(`${projectType}_results`);
     sessionStorage.removeItem(`${projectType}_displayResult`);
     sessionStorage.removeItem(`${projectType}_calculatedInputsFingerprint`);
+    sessionStorage.removeItem(`${projectType}_schematic_data`);
     sessionStorage.removeItem(`${projectType}_isCalculatedOp`);
     sessionStorage.removeItem(`${projectType}_isCalculatedBp`);
     sessionStorage.removeItem(`${projectType}_isCalculatedFd`);

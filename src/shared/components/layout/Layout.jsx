@@ -79,12 +79,17 @@ export default function Layout() {
   // Derive current page title from route + session
   const projectType = sessionStorage.getItem("projectType");
   const formattedProjectType = formatProjectType(projectType);
-  const isCalculationRoot = location.pathname === "/projects" || location.pathname === "/requests";
+  const isCalculationRoot =
+    location.pathname === "/projects" || location.pathname === "/requests";
   const isCheckingQueue = location.pathname.startsWith("/checking-queue");
   const isProjectTools = location.pathname.startsWith("/project-tools");
-  const projectToolsMatch = location.pathname.match(/^\/project-tools\/([^/]+)(?:\/(.*))?$/);
+  const projectToolsMatch = location.pathname.match(
+    /^\/project-tools\/([^/]+)(?:\/(.*))?$/,
+  );
   // Covers /projects/new (type picker) and /projects/new/:type (form).
-  const isNewRequest = /^\/(projects|requests)\/new(\/|$)/.test(location.pathname);
+  const isNewRequest = /^\/(projects|requests)\/new(\/|$)/.test(
+    location.pathname,
+  );
   // /projects/detail/:requestId — Projects > [its Request No.]
   const requestDetailId = location.pathname.match(
     /^\/(projects|requests)\/detail\/([^/]+)/,
@@ -101,7 +106,9 @@ export default function Layout() {
   if (location.pathname === "/project-tools") {
     currentTitle = "Project Tools";
   } else if (location.pathname.startsWith("/project-tools/")) {
-    const rawStep = location.pathname.replace("/project-tools/", "").split("/")[0];
+    const rawStep = location.pathname
+      .replace("/project-tools/", "")
+      .split("/")[0];
     const stepLabelMap = {
       structural: "Calculation",
       opening: "Opening",
@@ -111,7 +118,9 @@ export default function Layout() {
     };
     const stepName =
       stepLabelMap[rawStep] ||
-      (rawStep ? rawStep.charAt(0).toUpperCase() + rawStep.slice(1) : "Calculation");
+      (rawStep
+        ? rawStep.charAt(0).toUpperCase() + rawStep.slice(1)
+        : "Calculation");
 
     if (rawStep === "report") {
       currentTitle = {
@@ -135,8 +144,7 @@ export default function Layout() {
     };
   } else if (isCalculationRoot) {
     currentTitle =
-      MENU_ITEMS.find((item) => item.path === "/projects")?.name ??
-      "My Works";
+      MENU_ITEMS.find((item) => item.path === "/projects")?.name ?? "My Works";
   } else if (isCheckingQueue) {
     currentTitle = "Checking Queue";
   } else if (isNewRequest) {
@@ -157,7 +165,8 @@ export default function Layout() {
       currentTitle = { global: "New Project", stage: null, substage: null };
     }
   } else if (
-    (location.pathname.startsWith("/projects") || location.pathname.startsWith("/requests")) &&
+    (location.pathname.startsWith("/projects") ||
+      location.pathname.startsWith("/requests")) &&
     formattedProjectType
   ) {
     let substage = null;
@@ -203,15 +212,15 @@ export default function Layout() {
     // draft: Projects > [Project Type] > Project Setup > [step].
     currentTitle = draftCase
       ? {
-        global: requestNoOf(draftCase.request) || "Project",
-        stage: `Case ${draftCase.case.no}`,
-        substage: substage ?? "Initial",
-      }
+          global: requestNoOf(draftCase.request) || "Project",
+          stage: `Case ${draftCase.case.no}`,
+          substage: substage ?? "Initial",
+        }
       : {
-        global: formattedProjectType,
-        stage: "Initial",
-        substage,
-      };
+          global: formattedProjectType,
+          stage: "Initial",
+          substage,
+        };
   } else {
     currentTitle =
       MENU_ITEMS.find((item) => location.pathname.startsWith(item.path))
@@ -296,7 +305,7 @@ export default function Layout() {
       navigate(
         isDrawing
           ? `/project-tools/${typeSlug}/drawing/drawing-setup`
-          : `/project-tools/${typeSlug}/initial`
+          : `/project-tools/${typeSlug}/initial`,
       );
       return;
     }
@@ -381,12 +390,12 @@ export default function Layout() {
   // concurrent callers, so this just moves the ~3s gateway round-trip earlier
   // — by the time a form needs it, it's likely already sitting in cache.
   useEffect(() => {
-    getMasterData().catch(() => { });
-    getMasterDesignStandards().catch(() => { });
-    getMasterRegions().catch(() => { });
+    getMasterData().catch(() => {});
+    getMasterDesignStandards().catch(() => {});
+    getMasterRegions().catch(() => {});
     // Coupling master data lives deep in the drawing flow — prefetch it now so
     // it's cached well before the user reaches the coupling page.
-    getCouplingMasterData().catch(() => { });
+    getCouplingMasterData().catch(() => {});
   }, []);
 
   // Close mobile sidebar and reset scroll position on route change
@@ -426,7 +435,7 @@ export default function Layout() {
     navigate("/login");
 
     // Fire-and-forget: invalidate token server-side in background.
-    logoutUser().catch(() => { });
+    logoutUser().catch(() => {});
   };
   return (
     <div className="flex min-h-screen bg-[#f8fafc] text-slate-900">
@@ -510,16 +519,15 @@ export default function Layout() {
           }}
         />
 
-
         {/* Page content */}
-        <main className="flex-1 p-4 lg:p-8">
+        <main className="flex-1 px-6 py-4 ">
           <ErrorBoundary resetKey={location.pathname}>
             <Outlet />
           </ErrorBoundary>
         </main>
       </div>
 
-      <ScrollToTopButton />
+      {!isProjectTools && <ScrollToTopButton />}
     </div>
   );
 }
