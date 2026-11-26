@@ -11,18 +11,19 @@
  */
 
 import { Link } from "react-router-dom";
-import { ChevronLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 export function ProjectToolsFlowHeader() {
   return (
     <div className="mb-6 pb-4 border-b border-gray-200">
-      {/* ── Back to Project Tools Button Only (Height & Padding Enhanced) ── */}
+      {/* ── Back to Project Tools Button Only ── */}
       <div>
         <Link
           to="/project-tools"
-          className="inline-flex items-center gap-2 h-11 px-5 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800 transition-all shadow-sm"
+          className="h-9 px-3 sm:px-4 text-xs sm:text-sm bg-white text-[#0d3b66] border border-[#0d3b66] rounded-lg hover:bg-blue-50 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer font-medium shadow-xs"
+          title="Back to project tools"
         >
-          <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+          <ArrowLeft className="w-4 h-4 shrink-0" />
           <span>Back to project tools</span>
         </Link>
       </div>

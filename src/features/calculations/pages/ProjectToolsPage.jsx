@@ -1146,7 +1146,7 @@ export default function ProjectToolsPage() {
               type="button"
               onClick={handleNext}
               disabled={isNavigating}
-              className="px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm disabled:opacity-60"
+              className="px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 bg-[#0d3b66] text-white hover:bg-[#0a2e50] cursor-pointer shadow-sm disabled:opacity-60"
             >
               {isNavigating ? (
                 <>

@@ -3873,10 +3873,10 @@ export default function StructuralPage() {
           onClick={handleCalculateClick}
           disabled={calculation.loading}
           className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${calculation.loading
-            ? "bg-blue-600 text-white opacity-60 cursor-not-allowed shadow-sm"
+            ? "bg-[#0d3b66] text-white opacity-60 cursor-not-allowed shadow-sm"
             : isReadyToReport
               ? "bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 shadow-xs cursor-pointer"
-              : "bg-blue-600 hover:bg-blue-700 text-white shadow-sm cursor-pointer"
+              : "bg-[#0d3b66] hover:bg-[#0a2e50] text-white shadow-sm cursor-pointer"
             }`}
         >
           {calculation.loading ? (
@@ -3894,7 +3894,7 @@ export default function StructuralPage() {
           onClick={handleGenerateReport}
           disabled={!isReadyToReport || report.isGeneratingReport}
           className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 shadow-sm ${isReadyToReport && !report.isGeneratingReport
-            ? "bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm"
+            ? "bg-[#0d3b66] text-white hover:bg-[#0a2e50] cursor-pointer shadow-sm"
             : "bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed"
             }`}
           title={
