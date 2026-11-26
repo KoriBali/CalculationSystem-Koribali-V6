@@ -413,6 +413,11 @@ export default function ProjectToolsPage() {
       sessionStorage.removeItem("lighting-project_reportSnapshot");
       sessionStorage.removeItem("lighting-project_report");
       sessionStorage.removeItem("lighting-project_schematic_data");
+      sessionStorage.removeItem("lighting-project_poles");
+      sessionStorage.removeItem("lighting-project_directObjects");
+      sessionStorage.removeItem("lighting-project_arms");
+      sessionStorage.removeItem("lighting-project_overheadWires");
+      sessionStorage.removeItem("lighting-project_poleConfig");
       clearStandardPresetData();
     } catch {}
   };
@@ -837,14 +842,15 @@ export default function ProjectToolsPage() {
           JSON.stringify([
             {
               id: "1",
-              name: "Pole-1",
+              name: "",
               material: "STK400",
-              poleType: "Taper",
-              lowerDiameter: "165",
-              upperDiameter: "85",
-              lowerThickness: "4",
-              upperThickness: "4",
-              zHeight: "8000",
+              poleType: "Straight",
+              type: "Straight",
+              lowerDiameter: "",
+              upperDiameter: "",
+              lowerThickness: "",
+              upperThickness: "",
+              zHeight: "",
               quantity: "1",
             },
           ]),

@@ -376,6 +376,40 @@ export default function StructuralPage() {
     }
   }, [poleForm.poles]);
 
+  // Auto-heal custom mode: jika pengguna berada di mode custom (!isStandard),
+  // pastikan poles tidak membawa sisa dummy IS 8000 (165/85/4/8000). Jika ada, reset ke pole kosong.
+  const customModeCleanedRef = useRef(false);
+  useEffect(() => {
+    if (isStandard || customModeCleanedRef.current) return;
+
+    if (Array.isArray(poleForm.poles) && poleForm.poles.length === 1) {
+      const p = poleForm.poles[0];
+      const isLegacyDummyIS8 =
+        String(p.lowerDiameter || "") === "165" &&
+        String(p.upperDiameter || "") === "85" &&
+        (String(p.zHeight || "") === "8000" || String(p.height || "") === "8000");
+
+      if (isLegacyDummyIS8) {
+        customModeCleanedRef.current = true;
+        poleForm.setPoles([
+          {
+            id: "1",
+            name: "",
+            material: "STK400",
+            poleType: "Straight",
+            type: "Straight",
+            lowerDiameter: "",
+            upperDiameter: "",
+            lowerThickness: "",
+            upperThickness: "",
+            zHeight: "",
+            quantity: "1",
+          },
+        ]);
+      }
+    }
+  }, [isStandard, poleForm.poles]);
+
   // Auto-normalize arms: jika arms di session/state memiliki format raw backend (diameterMm, objects, dll.)
   // atau armObjects masih kosong padahal raw objects ada, konversikan ke format form Structural
   useEffect(() => {
