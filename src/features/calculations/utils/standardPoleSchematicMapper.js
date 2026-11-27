@@ -146,19 +146,30 @@ export function resolveInstallationSettings({
   const isEmbed =
     gp.includes("embed") ||
     condition?.isEmbedment ||
-    Boolean(condition?.embedmentLengthMm);
+    condition?.installationPole === "embedment" ||
+    taperPoleStandard?.installationPole === "embedment" ||
+    Boolean(condition?.embedmentLengthMm) ||
+    Boolean(poleConfig?.embedmentLength) ||
+    Boolean(taperPoleStandard?.embedmentLength);
+
   const isUnder = !isEmbed && (gp.includes("under") || lowestHeightNum < 0);
 
   if (isEmbed) {
-    const rawDepth = Math.abs(
-      Number(
-        condition?.embedmentLengthMm ??
-          condition?.embedmentDepth ??
-          condition?.depth ??
-          (lowestHeightNum !== 0 ? lowestHeightNum : 1500)
-      )
-    );
-    const depth = isNaN(rawDepth) || rawDepth <= 0 ? 1500 : rawDepth;
+    const embedValue =
+      poleConfig?.embedmentLength ??
+      taperPoleStandard?.embedmentLength ??
+      condition?.embedmentLengthMm ??
+      condition?.embedmentLength ??
+      condition?.embedmentDepth ??
+      condition?.depth;
+
+    const rawDepth = Math.abs(Number(embedValue));
+    const depth =
+      !isNaN(rawDepth) && rawDepth > 0
+        ? rawDepth
+        : lowestHeightNum !== 0
+          ? Math.abs(lowestHeightNum)
+          : 1500;
     return { type: "embedment", depth };
   }
 
@@ -476,6 +487,7 @@ export function getStandardPoleSchematicParameters({
     overheadWires,
     condition,
     poleConfig,
+    groundPosition,
     taperPoleStandard,
   });
 }

@@ -287,13 +287,16 @@ export default function StructuralPage() {
 
     const isNewCalculation =
       lastProcessedCalcKeyRef.current !== calculation.calculationKey;
+    const isStandardChanged = Boolean(
+      schematicData?.standardId &&
+      schematicData.standardId !== schematicParams.standardId,
+    );
     const hasSvg = Boolean(
       schematicData?.generatedSvg || schematicData?.editedSvg,
     );
 
-    // Only send parameters when a fresh calculation was performed (or initial mount without SVG).
-    // This strictly prevents schematic preview from updating in real-time while editing inputs or adding OHW.
-    if (!isNewCalculation && hasSvg) {
+    // Only send parameters when a fresh calculation was performed (or initial mount without SVG, or parameters changed).
+    if (!isNewCalculation && !isStandardChanged && hasSvg) {
       return;
     }
 
@@ -301,7 +304,7 @@ export default function StructuralPage() {
 
     sendSchematicParameters(schematicParams.payload, {
       standardId: schematicParams.standardId,
-      replaceManualEdit: false,
+      replaceManualEdit: isNewCalculation || isStandardChanged,
     });
   }, [
     calculation.isCalculated,
