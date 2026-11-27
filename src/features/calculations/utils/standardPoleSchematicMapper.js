@@ -250,48 +250,122 @@ export function mapInputToSchematicParameters({
 
   const segmentHeights = resolveSegmentHeights(rawHeights);
 
-  // 3. Petakan Step Poles (Maksimal 3 segmen untuk drawing engine)
-  const mappedPoles = poles.slice(0, 3).map((p, idx) => {
-    const rawType = String(p.poleType || p.type || "").toLowerCase();
-    const isTapered =
-      rawType.includes("taper") ||
-      (Number(p.lowerDiameter) !== Number(p.upperDiameter) &&
-        Number(p.upperDiameter) > 0);
+  // 3. Petakan Step Poles
+  // Deteksi tipe standar Single Taper (IS, LS, TS):
+  // Standar IS, LS, dan TS secara fisik adalah tiang 1 batang menerus (single continuous taper pole).
+  // Di backend kalkulasi, tiang ini dipecah menjadi beberapa segmen teknis (misal cap 100mm di atas dan segmen tertanam 300mm di bawah).
+  // Namun untuk engine drawing Pak Amir, tiang IS/LS/TS harus dikirimkan sebagai 1 segmen taper utuh
+  // agar:
+  // 1. Arm di ujung atas tiang (LS & TS) tidak terpotong oleh garis sambungan (joint) segmen tiang dan dapat dirender dengan sempurna.
+  // 2. Pada mode Under GL, engine Pak Amir otomatis membagi tiang menjadi H2 (di atas GL) dan H3 (di bawah GL) tanpa memunculkan dimensi "300" ganda dan datum bukaan tetap rapi di 750 mm.
+  const rawStandardCode = String(
+    taperPoleStandard?.poleType || condition?.poleTypeStandard || condition?.standardType || ""
+  ).toUpperCase();
+  const isSingleTaperStandard =
+    rawStandardCode.includes("IS") ||
+    rawStandardCode.includes("LS") ||
+    rawStandardCode.includes("TS");
 
-    const lowerD = Number(p.lowerDiameter ?? p.Lower_D ?? p.diameter ?? 165);
-    const upperD = isTapered
-      ? Number(p.upperDiameter ?? p.Upper_D ?? lowerD)
-      : lowerD;
+  let mappedPoles = [];
 
-    const lowerThk = Number(
-      p.lowerThickness ?? p.thickness ?? p.t ?? 4,
+  if (isSingleTaperStandard && poles.length > 0) {
+    const taperSeg =
+      poles.find(
+        (p) =>
+          String(p.poleType || p.type || "").toLowerCase().includes("taper") ||
+          (Number(p.lowerDiameter) !== Number(p.upperDiameter) &&
+            Number(p.upperDiameter) > 0),
+      ) || poles[0];
+
+    const totalSegHeight = segmentHeights.reduce((sum, h) => sum + h, 0);
+    const totalPoleHeight =
+      totalSegHeight > 0 ? totalSegHeight : Number(rawHeights[0] || 8000);
+
+    const lowerD = Number(
+      poles[poles.length - 1]?.lowerDiameter ??
+        taperSeg.lowerDiameter ??
+        taperSeg.Lower_D ??
+        165,
     );
-    const upperThk = isTapered
-      ? Number(p.upperThickness ?? p.upper_t ?? lowerThk)
-      : lowerThk;
+    const upperD = Number(
+      poles[0]?.upperDiameter ??
+        taperSeg.upperDiameter ??
+        taperSeg.Upper_D ??
+        85,
+    );
+    const thk = Number(
+      taperSeg.lowerThickness ?? taperSeg.thickness ?? taperSeg.t ?? 4,
+    );
+    const matName =
+      typeof taperSeg.material === "object"
+        ? taperSeg.material?.name || "STK400"
+        : taperSeg.material || "STK400";
 
-    const segHeight = segmentHeights[idx] || rawHeights[idx] || 0;
+    mappedPoles = [
+      {
+        name: "Pole-1",
+        material: matName,
+        type: "tapered",
+        Lower_D: lowerD,
+        Upper_D: upperD,
+        lowerDiameter: lowerD,
+        upperDiameter: upperD,
+        thickness: thk,
+        lowerThickness: thk,
+        upperThickness: thk,
+        height: totalPoleHeight,
+        quantity: 1,
+      },
+    ];
+  } else {
+    // Normal multi-step mapping (misal IA, LA, TA atau tiang custom multi-segmen)
+    mappedPoles = poles.slice(0, 3).map((p, idx) => {
+      const rawType = String(p.poleType || p.type || "").toLowerCase();
+      const isTapered =
+        rawType.includes("taper") ||
+        (Number(p.lowerDiameter) !== Number(p.upperDiameter) &&
+          Number(p.upperDiameter) > 0);
 
-    return {
-      name: p.name || `Pole-${idx + 1}`,
-      material:
-        typeof p.material === "object"
-          ? p.material?.name || "STK400"
-          : p.material || "STK400",
-      type: isTapered ? "tapered" : "straight",
-      Lower_D: lowerD,
-      Upper_D: upperD,
-      lowerDiameter: lowerD,
-      upperDiameter: upperD,
-      thickness: lowerThk,
-      lowerThickness: lowerThk,
-      upperThickness: upperThk,
-      height: segHeight,
-      quantity: Number(p.quantity || 1),
-    };
-  });
+      const lowerD = Number(p.lowerDiameter ?? p.Lower_D ?? p.diameter ?? 165);
+      const upperD = isTapered
+        ? Number(p.upperDiameter ?? p.Upper_D ?? lowerD)
+        : lowerD;
+
+      const lowerThk = Number(
+        p.lowerThickness ?? p.thickness ?? p.t ?? 4,
+      );
+      const upperThk = isTapered
+        ? Number(p.upperThickness ?? p.upper_t ?? lowerThk)
+        : lowerThk;
+
+      const segHeight = segmentHeights[idx] || rawHeights[idx] || 0;
+
+      return {
+        name: p.name || `Pole-${idx + 1}`,
+        material:
+          typeof p.material === "object"
+            ? p.material?.name || "STK400"
+            : p.material || "STK400",
+        type: isTapered ? "tapered" : "straight",
+        Lower_D: lowerD,
+        Upper_D: upperD,
+        lowerDiameter: lowerD,
+        upperDiameter: upperD,
+        thickness: lowerThk,
+        lowerThickness: lowerThk,
+        upperThickness: upperThk,
+        height: segHeight,
+        quantity: Number(p.quantity || 1),
+      };
+    });
+  }
 
   // 4. Petakan Arms (Maksimal 2 arms untuk drawing engine)
+  const totalPoleHeight = mappedPoles.reduce(
+    (sum, p) => sum + Number(p.height || 0),
+    0,
+  );
+
   const mappedArms = (arms || []).slice(0, 2).map((a, idx) => {
     const armType = String(a.armType || a.type || "")
       .toLowerCase()
@@ -301,15 +375,34 @@ export function mapInputToSchematicParameters({
 
     const dia = Number(a.diameter ?? a.diameterMm ?? a.Lower_D ?? 60.5);
     const thk = Number(a.thickness ?? a.thicknessMm ?? a.t ?? 3.2);
-    const rawH =
+
+    let rawH =
       a.installationHeightM != null && a.installationHeightM !== ""
         ? Math.round(Number(a.installationHeightM) * 1000)
         : Number(a.zHeight ?? a.height ?? a.elevation ?? a.H ?? 0);
+
+    // Di mode baseplate-under-gl, engine Pak Amir menghitung Y arm di atas GL dengan mengurangkan depth:
+    // arm.height_above_gl = arm.height - depth.
+    // Jadi input arm.height ke engine Pak Amir harus mengacu pada datum dasar tiang (baseplate):
+    // Jika rawH diinput mengacu ke permukaan GL (misal rawH <= totalPoleHeight - depth), tambahkan depth.
+    if (installation.type === "baseplate-under-gl") {
+      const depth = Number(installation.depth || 0);
+      if (rawH <= totalPoleHeight - depth) {
+        rawH += depth;
+      }
+    }
+
+    // Pastikan arm connection tidak melewati puncak tiang (pak amir butuh koneksi berada di dalam badan tiang)
+    // Standar Road Lighting arm dipasang 100 mm di bawah puncak tiang
+    if (rawH >= totalPoleHeight - 20) {
+      rawH = totalPoleHeight - 100;
+    }
+
     const h = Number(rawH);
     const rawLen =
       a.totalLengthM != null
         ? Math.round(Number(a.totalLengthM) * 1000)
-        : (a.length ?? a.L ?? 1500);
+        : (a.length ?? a.L ?? 180);
     const len = Number(rawLen);
     const fixAngle = Number(a.fixedAngleDeg ?? a.fixAngle ?? 0);
     const vertAngle = Number(a.verticalAngleDeg ?? a.verticalAngle ?? 0);
