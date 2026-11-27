@@ -501,6 +501,14 @@ export default function StructuralPage() {
             ? arm.material?.name || "STK400"
             : arm.material || arm.materialName || "STK400";
 
+        const heightMm =
+          arm.installationHeightM != null && arm.installationHeightM !== ""
+            ? Math.round(Number(arm.installationHeightM) * 1000)
+            : arm.height || arm.zHeight
+              ? Math.round(Number(arm.height || arm.zHeight))
+              : 4800;
+        const instHeightM = Number((heightMm / 1000).toFixed(3));
+
         const mappedArmObjects = rawObjects.map((ao, aoIdx) => ({
           idAo: String(ao.idAo || aoIdx + 1),
           name: ao.name || "灯具",
@@ -511,6 +519,9 @@ export default function StructuralPage() {
           frontArea: String(ao.frontAreaM2 ?? ao.frontArea ?? "0.1"),
           sideArea: String(ao.sideAreaM2 ?? ao.sideArea ?? ""),
           weight: String(ao.massPerUnitKg ?? ao.weight ?? "14"),
+          height: String(heightMm),
+          zHeight: String(heightMm),
+          installationHeightM: instHeightM,
           hDistance: String(
             ao.horizontalLoadDistanceM != null
               ? Math.round(Number(ao.horizontalLoadDistanceM) * 1000)
@@ -536,12 +547,6 @@ export default function StructuralPage() {
             : arm.expLength
               ? Math.round(Number(arm.expLength))
               : totalLengthMm;
-        const heightMm =
-          arm.installationHeightM != null
-            ? Math.round(Number(arm.installationHeightM) * 1000)
-            : arm.height || arm.zHeight
-              ? Math.round(Number(arm.height || arm.zHeight))
-              : 4800;
         const hDistanceMm =
           mappedArmObjects[0]?.hDistance ||
           (arm.hDistance ? String(arm.hDistance) : String(expLengthMm));
@@ -552,7 +557,6 @@ export default function StructuralPage() {
         delete cleanArm.thicknessMm;
         delete cleanArm.totalLengthM;
         delete cleanArm.exposedLengthM;
-        delete cleanArm.installationHeightM;
         delete cleanArm.fixedAngleDeg;
         delete cleanArm.objects;
 
@@ -570,6 +574,7 @@ export default function StructuralPage() {
           expLength: String(expLengthMm),
           height: String(heightMm),
           zHeight: String(heightMm),
+          installationHeightM: instHeightM,
           hDistance: String(hDistanceMm),
           fixAngle: String(arm.fixedAngleDeg ?? arm.fixAngle ?? "0"),
           nnC: String(arm.baseWindCoefficient ?? arm.nnC ?? "0.7"),
@@ -1441,10 +1446,21 @@ export default function StructuralPage() {
     armForm.setArms((prev) => {
       const next = [...prev];
       const updated = { ...next[armIdx], [field]: value };
-      if (field === "height") {
-        updated.zHeight = value;
-      } else if (field === "zHeight") {
+      if (field === "height" || field === "zHeight") {
         updated.height = value;
+        updated.zHeight = value;
+        const numM = Number(value) / 1000;
+        const instM = !isNaN(numM) ? Number(numM.toFixed(3)) : 0;
+        updated.installationHeightM = instM;
+        // Otomatis sinkronkan height dari seluruh object yang ngikut di arm tersebut
+        if (Array.isArray(updated.armObjects)) {
+          updated.armObjects = updated.armObjects.map((ao) => ({
+            ...ao,
+            height: value,
+            zHeight: value,
+            installationHeightM: instM,
+          }));
+        }
       }
       next[armIdx] = updated;
       return next;

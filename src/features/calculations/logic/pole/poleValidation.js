@@ -109,27 +109,48 @@ const resolveData = ({
             thickness: userArm.thickness ?? defArm.thickness ?? "3.8",
             length: userArm.length ?? defArm.length ?? "180",
             expLength: userArm.expLength ?? defArm.expLength ?? userArm.length ?? "180",
-            zHeight: userArm.zHeight ?? userArm.height ?? defArm.zHeight ?? "4800",
-            height: userArm.height ?? userArm.zHeight ?? defArm.height ?? "4800",
+            zHeight:
+              userArm.installationHeightM != null && userArm.installationHeightM !== ""
+                ? String(Math.round(Number(userArm.installationHeightM) * 1000))
+                : (userArm.zHeight ?? userArm.height ?? defArm.zHeight ?? "4800"),
+            height:
+              userArm.installationHeightM != null && userArm.installationHeightM !== ""
+                ? String(Math.round(Number(userArm.installationHeightM) * 1000))
+                : (userArm.height ?? userArm.zHeight ?? defArm.height ?? "4800"),
+            installationHeightM:
+              userArm.installationHeightM != null && userArm.installationHeightM !== ""
+                ? Number(userArm.installationHeightM)
+                : defArm.installationHeightM != null
+                  ? Number(defArm.installationHeightM)
+                  : Number(userArm.zHeight ?? userArm.height ?? defArm.zHeight ?? 4800) / 1000,
             hDistance: userArm.hDistance ?? defArm.hDistance ?? "180",
             fixAngle: userArm.fixAngle ?? defArm.fixAngle ?? "0",
             nnC: userArm.nnC ?? defArm.nnC ?? "0.7",
             quantity: userArm.quantity ?? defArm.quantity ?? "1",
             armObjects:
               Array.isArray(userArm.armObjects) && userArm.armObjects.length > 0
-                ? userArm.armObjects.map((userAo, aoIdx) => ({
-                    idAo: userAo.idAo || String(aoIdx + 1),
-                    name: userAo.name || "灯具",
-                    type: userAo.type || "omni",
-                    frontArea: userAo.frontArea ?? "0.1",
-                    sideArea: userAo.sideArea ?? "",
-                    weight: userAo.weight ?? "14",
-                    zHeight: userAo.zHeight ?? userAo.hDistance ?? "180",
-                    hDistance: userAo.hDistance ?? userAo.zHeight ?? "180",
-                    fixAngle: userAo.fixAngle ?? "0",
-                    nnC: userAo.nnC ?? "1",
-                    quantity: userAo.quantity ?? "1",
-                  }))
+                ? userArm.armObjects.map((userAo, aoIdx) => {
+                    const armH =
+                      userArm.installationHeightM != null && userArm.installationHeightM !== ""
+                        ? String(Math.round(Number(userArm.installationHeightM) * 1000))
+                        : (userArm.zHeight ?? userArm.height ?? defArm.zHeight ?? "4800");
+                    const armInstM = Number(armH) / 1000;
+                    return {
+                      idAo: userAo.idAo || String(aoIdx + 1),
+                      name: userAo.name || "灯具",
+                      type: userAo.type || "omni",
+                      frontArea: userAo.frontArea ?? "0.1",
+                      sideArea: userAo.sideArea ?? "",
+                      weight: userAo.weight ?? "14",
+                      height: userAo.height ?? userAo.zHeight ?? armH,
+                      zHeight: userAo.zHeight ?? userAo.height ?? armH,
+                      installationHeightM: userAo.installationHeightM ?? armInstM,
+                      hDistance: userAo.hDistance ?? "180",
+                      fixAngle: userAo.fixAngle ?? "0",
+                      nnC: userAo.nnC ?? "1",
+                      quantity: userAo.quantity ?? "1",
+                    };
+                  })
                 : defArm.armObjects || [],
           };
           return mergedArm;

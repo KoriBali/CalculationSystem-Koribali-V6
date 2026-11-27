@@ -1003,8 +1003,17 @@ export const mapCalculationArms = (rawList, materialsList = null, isOldJil = fal
       const rawExpL = Number(a.expLength ?? a.exposedLengthM ?? 0);
       const exposedLengthM = rawExpL > 10 ? rawExpL / 1000 : rawExpL;
 
-      const rawH = Number(a.height ?? a.zHeight ?? a.installationHeightM ?? 0);
-      const installationHeightM = rawH > 10 ? rawH / 1000 : rawH;
+      const rawInstM =
+        a.installationHeightM != null && a.installationHeightM !== ""
+          ? Number(a.installationHeightM)
+          : null;
+      const rawH = Number(a.height ?? a.zHeight ?? 0);
+      const installationHeightM =
+        rawInstM !== null && !isNaN(rawInstM)
+          ? rawInstM
+          : rawH > 10
+            ? rawH / 1000
+            : rawH;
 
       const rawObjects = Array.isArray(a.objects)
         ? a.objects

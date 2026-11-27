@@ -635,30 +635,6 @@ export default function ProjectToolsPage() {
               ? arm.material?.name || "STK400"
               : arm.material || arm.materialName || "STK400";
 
-          const rawObjects = arm.objects || arm.armObjects || [];
-          const armObjects = rawObjects.map((ao, aoIdx) => ({
-            idAo: String(ao.idAo || aoIdx + 1),
-            name: ao.name || "灯具",
-            type:
-              ao.objectKind === "directional" || ao.type === "directional"
-                ? "directional"
-                : "omni",
-            frontArea: String(ao.frontAreaM2 ?? ao.frontArea ?? "0.1"),
-            sideArea: String(ao.sideAreaM2 ?? ao.sideArea ?? ""),
-            weight: String(ao.massPerUnitKg ?? ao.weight ?? "14"),
-            hDistance: String(
-              ao.horizontalLoadDistanceM != null
-                ? Math.round(Number(ao.horizontalLoadDistanceM) * 1000)
-                : (ao.hDistance ??
-                    (arm.exposedLengthM != null
-                      ? Math.round(Number(arm.exposedLengthM) * 1000)
-                      : "180")),
-            ),
-            nnC: String(ao.baseWindCoefficient ?? ao.nnC ?? "1"),
-            quantity: String(ao.quantity ?? "1"),
-            fixAngle: String(ao.fixedAngleDeg ?? ao.fixAngle ?? "0"),
-          }));
-
           const totalLengthMm =
             arm.totalLengthM != null
               ? Math.round(Number(arm.totalLengthM) * 1000)
@@ -672,11 +648,40 @@ export default function ProjectToolsPage() {
                 ? Math.round(Number(arm.expLength))
                 : totalLengthMm;
           const heightMm =
-            arm.installationHeightM != null
+            arm.installationHeightM != null && arm.installationHeightM !== ""
               ? Math.round(Number(arm.installationHeightM) * 1000)
               : arm.height || arm.zHeight
                 ? Math.round(Number(arm.height || arm.zHeight))
                 : 4800;
+          const instHeightM = Number((heightMm / 1000).toFixed(3));
+
+          const rawObjects = arm.objects || arm.armObjects || [];
+          const armObjects = rawObjects.map((ao, aoIdx) => ({
+            idAo: String(ao.idAo || aoIdx + 1),
+            name: ao.name || "灯具",
+            type:
+              ao.objectKind === "directional" || ao.type === "directional"
+                ? "directional"
+                : "omni",
+            frontArea: String(ao.frontAreaM2 ?? ao.frontArea ?? "0.1"),
+            sideArea: String(ao.sideAreaM2 ?? ao.sideArea ?? ""),
+            weight: String(ao.massPerUnitKg ?? ao.weight ?? "14"),
+            height: String(heightMm),
+            zHeight: String(heightMm),
+            installationHeightM: instHeightM,
+            hDistance: String(
+              ao.horizontalLoadDistanceM != null
+                ? Math.round(Number(ao.horizontalLoadDistanceM) * 1000)
+                : (ao.hDistance ??
+                    (arm.exposedLengthM != null
+                      ? Math.round(Number(arm.exposedLengthM) * 1000)
+                      : "180")),
+            ),
+            nnC: String(ao.baseWindCoefficient ?? ao.nnC ?? "1"),
+            quantity: String(ao.quantity ?? "1"),
+            fixAngle: String(ao.fixedAngleDeg ?? ao.fixAngle ?? "0"),
+          }));
+
           const hDistanceMm =
             armObjects[0]?.hDistance ||
             (arm.hDistance ? String(arm.hDistance) : String(expLengthMm));
@@ -694,6 +699,7 @@ export default function ProjectToolsPage() {
             expLength: String(expLengthMm),
             height: String(heightMm),
             zHeight: String(heightMm),
+            installationHeightM: instHeightM,
             hDistance: String(hDistanceMm),
             fixAngle: String(arm.fixedAngleDeg ?? arm.fixAngle ?? "0"),
             nnC: String(arm.baseWindCoefficient ?? arm.nnC ?? "0.7"),

@@ -336,9 +336,9 @@ export function mapInputToSchematicParameters({
     const dia = Number(a.diameter ?? a.diameterMm ?? a.Lower_D ?? 60.5);
     const thk = Number(a.thickness ?? a.thicknessMm ?? a.t ?? 3.2);
     const rawH =
-      a.installationHeightM != null
+      a.installationHeightM != null && a.installationHeightM !== ""
         ? Math.round(Number(a.installationHeightM) * 1000)
-        : (a.zHeight ?? a.height ?? a.elevation ?? a.H ?? 0);
+        : Number(a.zHeight ?? a.height ?? a.elevation ?? a.H ?? 0);
     const h = Number(rawH);
     const rawLen =
       a.totalLengthM != null
