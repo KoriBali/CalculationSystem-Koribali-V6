@@ -12,6 +12,7 @@
 
 import { Link } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { forgetProjectToolsPath } from "../../utils/requestsLastPath";
 
 export function ProjectToolsFlowHeader() {
   return (
@@ -20,6 +21,7 @@ export function ProjectToolsFlowHeader() {
       <div>
         <Link
           to="/project-tools"
+          onClick={() => forgetProjectToolsPath()}
           className="h-9 px-3 sm:px-4 text-xs sm:text-sm bg-white text-[#0d3b66] border border-[#0d3b66] rounded-lg hover:bg-blue-50 transition-colors inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer font-medium shadow-xs"
           title="Back to project tools"
         >

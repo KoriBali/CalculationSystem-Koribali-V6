@@ -338,6 +338,9 @@ export default function Layout() {
   // without that, default page.
   const getMenuPath = (path) => {
     if (path === "/project-tools") {
+      if (location.pathname.startsWith("/project-tools/structural")) {
+        return "/project-tools";
+      }
       const lastTools = lastProjectToolsPath();
       if (lastTools) return lastTools;
       return "/project-tools";
@@ -492,7 +495,10 @@ export default function Layout() {
           userData={userData}
           onRootCrumbClick={
             isProjectTools
-              ? () => navigate("/project-tools")
+              ? () => {
+                  forgetProjectToolsPath();
+                  navigate("/project-tools");
+                }
               : isNewRequest
                 ? () => leaveNewRequest("/projects")
                 : () => leaveCalculation("/projects")
@@ -500,15 +506,8 @@ export default function Layout() {
           onProjectCrumbClick={
             isProjectTools
               ? () => {
-                  if (location.pathname.startsWith("/project-tools")) {
-                    navigate("/project-tools/structural");
-                    return;
-                  }
-                  if (projectToolsMatch) {
-                    navigate(`/project-tools/${projectToolsMatch[1]}/setup`);
-                  } else {
-                    navigate("/project-tools");
-                  }
+                  forgetProjectToolsPath();
+                  navigate("/project-tools");
                 }
               : handleProjectCrumbClick
           }

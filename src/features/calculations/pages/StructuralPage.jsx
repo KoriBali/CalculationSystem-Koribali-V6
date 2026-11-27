@@ -478,7 +478,8 @@ export default function StructuralPage() {
         const hasRawBeProps =
           arm.diameterMm !== undefined ||
           arm.totalLengthM !== undefined ||
-          arm.installationHeightM !== undefined ||
+          arm.exposedLengthM !== undefined ||
+          arm.thicknessMm !== undefined ||
           Array.isArray(arm.objects);
 
         const rawObjects = arm.objects || arm.armObjects || [];
