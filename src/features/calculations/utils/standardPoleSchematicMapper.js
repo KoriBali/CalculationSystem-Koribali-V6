@@ -291,40 +291,6 @@ export function mapInputToSchematicParameters({
     };
   });
 
-  // Khusus baseplate-under-gl: Engine schematic Pak Amir mensyaratkan
-  // lowest pole height > depth (agar segmen terbawah melampaui kedalaman tanam GL).
-  // Jika segmen terbawah <= depth (misal backend mendefinisikan segmen tertanam tepat setinggi depth = 300 mm),
-  // sesuaikan segmen tiang agar mematuhi kontrak engine Pak Amir tanpa mengubah total panjang tiang.
-  if (installation.type === "baseplate-under-gl" && mappedPoles.length > 0) {
-    const lastIdx = mappedPoles.length - 1;
-    const lowestPole = mappedPoles[lastIdx];
-    if (lowestPole.height <= installation.depth) {
-      const diffNeeded = installation.depth - lowestPole.height + 100; // minimal 100 mm di atas GL
-
-      if (
-        mappedPoles.length === 3 &&
-        mappedPoles[0].height <= diffNeeded &&
-        mappedPoles[0].type === "straight"
-      ) {
-        // Gabungkan segmen 0 (100mm straight cap di puncak) ke segmen bawah
-        const absorbedHeight = mappedPoles[0].height;
-        mappedPoles[lastIdx].height += absorbedHeight;
-        mappedPoles.splice(0, 1);
-      } else if (mappedPoles.length > 1) {
-        // Ambil selisih dari segmen di atasnya
-        const prevIdx = lastIdx - 1;
-        if (mappedPoles[prevIdx].height > diffNeeded) {
-          mappedPoles[prevIdx].height -= diffNeeded;
-          mappedPoles[lastIdx].height += diffNeeded;
-        }
-      } else {
-        if (lowestPole.height <= installation.depth) {
-          lowestPole.height = installation.depth + 100;
-        }
-      }
-    }
-  }
-
   // 4. Petakan Arms (Maksimal 2 arms untuk drawing engine)
   const mappedArms = (arms || []).slice(0, 2).map((a, idx) => {
     const armType = String(a.armType || a.type || "")
