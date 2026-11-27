@@ -307,7 +307,7 @@ export function usePoleCalculation({
   const calculate = async () => {
     if (poleStandardForm.poleTypeStandard?.type === "straight") {
       showToast("Calculation for Straight Pole is currently in development.", "error");
-      return;
+      return false;
     }
 
     resetAllErrors();
@@ -400,7 +400,7 @@ export function usePoleCalculation({
         );
       }
 
-      return;
+      return false;
     }
 
     try {
@@ -463,10 +463,7 @@ export function usePoleCalculation({
       // Let Header re-read sessionStorage now — otherwise the Opening tab
       // stays locked-looking until the user also clicks Next and navigates.
       notifyCalculationProgressChanged();
-
-      document
-        .getElementById("results-pole")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return true;
     } catch (err) {
       console.error("Calculation failed:", err);
       const errMsg = err?.message || "Something went wrong during calculation";
@@ -474,8 +471,10 @@ export function usePoleCalculation({
       setIsCalculated(false);
       setShowResults(false);
       sessionStorage.removeItem(`${projectType}_isCalculatedPole`);
+      sessionStorage.removeItem(`${projectType}_showResults`);
       notifyCalculationProgressChanged();
       showToast(errMsg, "error");
+      return false;
     } finally {
       setLoading(false);
     }

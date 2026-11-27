@@ -360,9 +360,9 @@ export default function StructuralPage() {
   const previewSchematicSvg =
     schematicData?.editedSvg || schematicData?.generatedSvg || "";
 
-  // Auto-scroll to calculation results table whenever calculation succeeds
+  // Auto-scroll to calculation results table ONLY when calculation newly succeeds (calculationKey > 0)
   useEffect(() => {
-    if (calculation.isCalculated) {
+    if (calculation.isCalculated && calculation.calculationKey > 0) {
       const timer = setTimeout(() => {
         resultsTableRef.current?.scrollIntoView({
           behavior: "smooth",
@@ -375,13 +375,12 @@ export default function StructuralPage() {
 
   const handleCalculateClick = async () => {
     try {
-      await calculation.calculate();
-      setTimeout(() => {
-        resultsTableRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }, 200);
+      const isSuccess = await calculation.calculate();
+      if (!isSuccess) {
+        // Calculation did not succeed (validation failed or API error)
+        // Do NOT scroll or navigate to results table
+        return;
+      }
     } catch {
       // errors handled inside calculation hook
     }
@@ -527,9 +526,9 @@ export default function StructuralPage() {
             ao.horizontalLoadDistanceM != null
               ? Math.round(Number(ao.horizontalLoadDistanceM) * 1000)
               : (ao.hDistance ??
-                  (arm.exposedLengthM != null
-                    ? Math.round(Number(arm.exposedLengthM) * 1000)
-                    : "180")),
+                (arm.exposedLengthM != null
+                  ? Math.round(Number(arm.exposedLengthM) * 1000)
+                  : "180")),
           ),
           nnC: String(ao.baseWindCoefficient ?? ao.nnC ?? "1"),
           quantity: String(ao.quantity ?? "1"),
@@ -661,7 +660,7 @@ export default function StructuralPage() {
         const p2 = currentPoles[i];
         if (
           String(p1.zHeight ?? p1.height ?? "") !==
-            String(p2.zHeight ?? p2.height ?? "") ||
+          String(p2.zHeight ?? p2.height ?? "") ||
           String(p1.lowerDiameter ?? "") !== String(p2.lowerDiameter ?? "") ||
           String(p1.upperDiameter ?? "") !== String(p2.upperDiameter ?? "") ||
           String(p1.lowerThickness ?? "") !== String(p2.lowerThickness ?? "") ||
@@ -700,13 +699,13 @@ export default function StructuralPage() {
         const a2 = currentArms[i];
         if (
           String(a1.diameter ?? a1.diameterMm ?? "") !==
-            String(a2.diameter ?? a2.diameterMm ?? "") ||
+          String(a2.diameter ?? a2.diameterMm ?? "") ||
           String(a1.thickness ?? a1.thicknessMm ?? "") !==
-            String(a2.thickness ?? a2.thicknessMm ?? "") ||
+          String(a2.thickness ?? a2.thicknessMm ?? "") ||
           String(a1.length ?? a1.totalLengthM ?? "") !==
-            String(a2.length ?? a2.totalLengthM ?? "") ||
+          String(a2.length ?? a2.totalLengthM ?? "") ||
           String(a1.height ?? a1.zHeight ?? "") !==
-            String(a2.height ?? a2.zHeight ?? "")
+          String(a2.height ?? a2.zHeight ?? "")
         ) {
           return true;
         }
@@ -750,13 +749,13 @@ export default function StructuralPage() {
     if (!isStandard || !standardPreset?.poleConfig) return false;
     const presetOd = String(
       standardPreset.poleConfig.overDesign ??
-        standardPreset.poleConfig.overdesignFactor ??
-        "1",
+      standardPreset.poleConfig.overdesignFactor ??
+      "1",
     );
     const currentOd = String(
       poleConfigForm.poleConfig?.overDesign ??
-        poleConfigForm.poleConfig?.overdesignFactor ??
-        "1",
+      poleConfigForm.poleConfig?.overdesignFactor ??
+      "1",
     );
     return presetOd !== currentOd;
   }, [
@@ -773,14 +772,14 @@ export default function StructuralPage() {
       const p2 = pole;
       return (
         String(p1.zHeight ?? p1.height ?? "") !==
-          String(p2.zHeight ?? p2.height ?? "") ||
+        String(p2.zHeight ?? p2.height ?? "") ||
         String(p1.lowerDiameter ?? "") !== String(p2.lowerDiameter ?? "") ||
         String(p1.upperDiameter ?? "") !== String(p2.upperDiameter ?? "") ||
         String(p1.lowerThickness ?? "") !== String(p2.lowerThickness ?? "") ||
         String(p1.upperThickness ?? "") !== String(p2.upperThickness ?? "") ||
         String(p1.material ?? "") !== String(p2.material ?? "") ||
         String(p1.poleType ?? p1.type ?? "") !==
-          String(p2.poleType ?? p2.type ?? "") ||
+        String(p2.poleType ?? p2.type ?? "") ||
         String(p1.name ?? "") !== String(p2.name ?? "")
       );
     },
@@ -814,15 +813,15 @@ export default function StructuralPage() {
       const a2 = arm;
       return (
         String(a1.diameter ?? a1.diameterMm ?? "") !==
-          String(a2.diameter ?? a2.diameterMm ?? "") ||
+        String(a2.diameter ?? a2.diameterMm ?? "") ||
         String(a1.thickness ?? a1.thicknessMm ?? "") !==
-          String(a2.thickness ?? a2.thicknessMm ?? "") ||
+        String(a2.thickness ?? a2.thicknessMm ?? "") ||
         String(a1.length ?? a1.totalLengthM ?? "") !==
-          String(a2.length ?? a2.totalLengthM ?? "") ||
+        String(a2.length ?? a2.totalLengthM ?? "") ||
         String(a1.expLength ?? a1.expansionLengthMm ?? "") !==
-          String(a2.expLength ?? a2.expansionLengthMm ?? "") ||
+        String(a2.expLength ?? a2.expansionLengthMm ?? "") ||
         String(a1.height ?? a1.zHeight ?? "") !==
-          String(a2.height ?? a2.zHeight ?? "") ||
+        String(a2.height ?? a2.zHeight ?? "") ||
         String(a1.hDistance ?? "") !== String(a2.hDistance ?? "") ||
         String(a1.fixAngle ?? "0") !== String(a2.fixAngle ?? "0") ||
         String(a1.nnC ?? "0.7") !== String(a2.nnC ?? "0.7") ||
@@ -894,7 +893,7 @@ export default function StructuralPage() {
       sessionStorage.removeItem(`${projectType}_resultsOhw`);
       sessionStorage.removeItem(`${projectType}_showResults`);
       sessionStorage.removeItem(`${projectType}_calculatedInputsFingerprint`);
-    } catch {}
+    } catch { }
 
     calculation.setToast?.({
       message: "Reset to standard specifications successfully.",
@@ -1493,7 +1492,8 @@ export default function StructuralPage() {
     !calculation.isInputsChanged;
 
   const hasCalculationResults = Boolean(
-    (calculation.isCalculated || calculation.results?.length > 0) &&
+    !calculation.calculationError &&
+    (calculation.isCalculated || (calculation.results?.length > 0 && calculation.showResults)) &&
     calculation.displayResult,
   );
 
@@ -1544,11 +1544,10 @@ export default function StructuralPage() {
                         key={std.id}
                         type="button"
                         onClick={() => handleSelectDesignStandard(std)}
-                        className={`w-full text-left px-3 sm:px-4 py-2 sm:py-2.5 rounded border text-xs md:text-sm flex items-center justify-between gap-1.5 cursor-pointer transition-colors ${
-                          isSelected
+                        className={`w-full text-left px-3 sm:px-4 py-2 sm:py-2.5 rounded border text-xs md:text-sm flex items-center justify-between gap-1.5 cursor-pointer transition-colors ${isSelected
                             ? "border-blue-500 bg-blue-50/50 text-blue-900 font-medium"
                             : "border-gray-200 hover:border-gray-400 text-gray-700 bg-white"
-                        }`}
+                          }`}
                       >
                         <span className="leading-tight">{std.label}</span>
                         {isSelected ? (
@@ -1739,11 +1738,10 @@ export default function StructuralPage() {
                               });
                             }
                           }}
-                          className={`w-full h-10 pl-3.5 pr-12 rounded-md border text-sm outline-none transition-colors ${
-                            poleConfigForm.poleConfigErrors?.embedmentLength
+                          className={`w-full h-10 pl-3.5 pr-12 rounded-md border text-sm outline-none transition-colors ${poleConfigForm.poleConfigErrors?.embedmentLength
                               ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                               : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                          }`}
+                            }`}
                         />
                         <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-medium pointer-events-none">
                           mm
@@ -1824,11 +1822,10 @@ export default function StructuralPage() {
                           });
                         }
                       }}
-                      className={`w-full h-10 pl-3.5 pr-12 rounded-md border text-sm outline-none transition-colors ${
-                        poleConfigForm.poleConfigErrors?.lowestHeight
+                      className={`w-full h-10 pl-3.5 pr-12 rounded-md border text-sm outline-none transition-colors ${poleConfigForm.poleConfigErrors?.lowestHeight
                           ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                           : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                      }`}
+                        }`}
                     />
                     <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 text-xs font-medium pointer-events-none">
                       mm
@@ -1894,12 +1891,11 @@ export default function StructuralPage() {
                             });
                           }
                         }}
-                        className={`w-full h-10 px-3.5 rounded-md border text-sm outline-none transition-colors ${
-                          poleConfigForm.poleConfigErrors?.overdesignFactor ||
-                          poleConfigForm.poleConfigErrors?.overDesign
+                        className={`w-full h-10 px-3.5 rounded-md border text-sm outline-none transition-colors ${poleConfigForm.poleConfigErrors?.overdesignFactor ||
+                            poleConfigForm.poleConfigErrors?.overDesign
                             ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                             : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                        }`}
+                          }`}
                       />
                     </div>
                   </div>
@@ -1925,12 +1921,12 @@ export default function StructuralPage() {
 
                 {(poleConfigForm.poleConfigErrors?.overdesignFactor ||
                   poleConfigForm.poleConfigErrors?.overDesign) && (
-                  <p className="text-[11px] text-red-500 mt-1.5">
-                    *
-                    {poleConfigForm.poleConfigErrors?.overdesignFactor ||
-                      poleConfigForm.poleConfigErrors?.overDesign}
-                  </p>
-                )}
+                    <p className="text-[11px] text-red-500 mt-1.5">
+                      *
+                      {poleConfigForm.poleConfigErrors?.overdesignFactor ||
+                        poleConfigForm.poleConfigErrors?.overDesign}
+                    </p>
+                  )}
               </div>
 
               {/* ── Sub-section 3: Step Poles ── */}
@@ -2093,11 +2089,10 @@ export default function StructuralPage() {
                                     },
                                   )
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  poleErr.name
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.name
                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                  }`}
                               />
                               {typeof poleErr.name === "string" && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -2210,12 +2205,11 @@ export default function StructuralPage() {
                                       },
                                     );
                                   }}
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.lowerDiameter ||
-                                    (isStraight && poleErr.upperDiameter)
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.lowerDiameter ||
+                                      (isStraight && poleErr.upperDiameter)
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -2223,12 +2217,12 @@ export default function StructuralPage() {
                               </div>
                               {(poleErr.lowerDiameter ||
                                 (isStraight && poleErr.upperDiameter)) && (
-                                <p className="text-[10px] text-red-500 mt-1 truncate">
-                                  *
-                                  {poleErr.lowerDiameter ||
-                                    (isStraight && poleErr.upperDiameter)}
-                                </p>
-                              )}
+                                  <p className="text-[10px] text-red-500 mt-1 truncate">
+                                    *
+                                    {poleErr.lowerDiameter ||
+                                      (isStraight && poleErr.upperDiameter)}
+                                  </p>
+                                )}
                             </div>
 
                             {/* Upper Diameter (Taper only) */}
@@ -2256,11 +2250,10 @@ export default function StructuralPage() {
                                         },
                                       )
                                     }
-                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                      poleErr.upperDiameter
+                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.upperDiameter
                                         ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                         : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                    }`}
+                                      }`}
                                   />
                                   <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                     mm
@@ -2305,12 +2298,11 @@ export default function StructuralPage() {
                                       },
                                     );
                                   }}
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.lowerThickness ||
-                                    (isStraight && poleErr.upperThickness)
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.lowerThickness ||
+                                      (isStraight && poleErr.upperThickness)
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -2318,12 +2310,12 @@ export default function StructuralPage() {
                               </div>
                               {(poleErr.lowerThickness ||
                                 (isStraight && poleErr.upperThickness)) && (
-                                <p className="text-[10px] text-red-500 mt-1 truncate">
-                                  *
-                                  {poleErr.lowerThickness ||
-                                    (isStraight && poleErr.upperThickness)}
-                                </p>
-                              )}
+                                  <p className="text-[10px] text-red-500 mt-1 truncate">
+                                    *
+                                    {poleErr.lowerThickness ||
+                                      (isStraight && poleErr.upperThickness)}
+                                  </p>
+                                )}
                             </div>
 
                             {/* Upper Thickness (Taper only) */}
@@ -2352,11 +2344,10 @@ export default function StructuralPage() {
                                         },
                                       )
                                     }
-                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                      poleErr.upperThickness
+                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.upperThickness
                                         ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                         : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                    }`}
+                                      }`}
                                   />
                                   <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                     mm
@@ -2394,11 +2385,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.zHeight
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.zHeight
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -2436,11 +2426,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    poleErr.quantity
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${poleErr.quantity
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   pcs
@@ -2616,11 +2605,10 @@ export default function StructuralPage() {
                           </div>
 
                           <div
-                            className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${
-                              obj.type === "directional"
+                            className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${obj.type === "directional"
                                 ? "xl:grid-cols-9"
                                 : "xl:grid-cols-7"
-                            } gap-2.5`}
+                              } gap-2.5`}
                           >
                             {/* Object Name */}
                             <div>
@@ -2642,11 +2630,10 @@ export default function StructuralPage() {
                                     name: e.target.value,
                                   })
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  doErr.name
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.name
                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                  }`}
                               />
                               {doErr.name && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -2674,11 +2661,10 @@ export default function StructuralPage() {
                                     type: e.target.value,
                                   })
                                 }
-                                className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${
-                                  doErr.type
+                                className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${doErr.type
                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                  }`}
                               >
                                 {OBJECT_TYPE_OPTIONS.map((opt) => (
                                   <option key={opt.value} value={opt.value}>
@@ -2718,11 +2704,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    doErr.frontArea
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.frontArea
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   m²
@@ -2761,11 +2746,10 @@ export default function StructuralPage() {
                                         },
                                       )
                                     }
-                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                      doErr.sideArea
+                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.sideArea
                                         ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                         : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                    }`}
+                                      }`}
                                   />
                                   <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                     m²
@@ -2804,11 +2788,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    doErr.weight
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.weight
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   kg
@@ -2845,11 +2828,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    doErr.zHeight
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.zHeight
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -2883,11 +2865,10 @@ export default function StructuralPage() {
                                     nnC: e.target.value,
                                   })
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  doErr.nnC
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.nnC
                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                  }`}
                               />
                               {doErr.nnC && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -2921,11 +2902,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    doErr.quantity
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.quantity
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   pcs
@@ -2963,11 +2943,10 @@ export default function StructuralPage() {
                                         },
                                       )
                                     }
-                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                      doErr.fixAngle
+                                    className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${doErr.fixAngle
                                         ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                         : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                    }`}
+                                      }`}
                                   />
                                   <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                     deg
@@ -3156,11 +3135,10 @@ export default function StructuralPage() {
                                     },
                                   )
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  ohwErr.name
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.name
                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                  }`}
                               />
                               {ohwErr.name && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -3194,11 +3172,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-11 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.weight
+                                  className={`w-full h-10 pl-2.5 pr-11 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.weight
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] font-medium pointer-events-none">
                                   kg/m
@@ -3236,11 +3213,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.diameter
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.diameter
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -3278,11 +3254,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.zHeight
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.zHeight
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -3320,11 +3295,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.span
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.span
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -3362,11 +3336,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-7 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.saggingRatio
+                                  className={`w-full h-10 pl-2.5 pr-7 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.saggingRatio
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   %
@@ -3403,11 +3376,10 @@ export default function StructuralPage() {
                                     },
                                   )
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  ohwErr.nnC
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.nnC
                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                  }`}
                               />
                               {ohwErr.nnC && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -3441,11 +3413,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.fixAngle
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.fixAngle
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   deg
@@ -3483,11 +3454,10 @@ export default function StructuralPage() {
                                       },
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    ohwErr.verticalAngle
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${ohwErr.verticalAngle
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   deg
@@ -3680,11 +3650,10 @@ export default function StructuralPage() {
                                     e.target.value,
                                   )
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  armErr.name
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.name
                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                  }`}
                               />
                               {armErr.name && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -3713,11 +3682,10 @@ export default function StructuralPage() {
                                     e.target.value,
                                   )
                                 }
-                                className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${
-                                  armErr.material
+                                className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${armErr.material
                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                  }`}
                               >
                                 {MATERIAL_OPTIONS.map((m) => (
                                   <option key={m.value} value={m.value}>
@@ -3755,11 +3723,10 @@ export default function StructuralPage() {
                                       e.target.value,
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    armErr.diameter
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.diameter
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -3795,11 +3762,10 @@ export default function StructuralPage() {
                                       e.target.value,
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    armErr.thickness
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.thickness
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -3834,11 +3800,10 @@ export default function StructuralPage() {
                                       e.target.value,
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    armErr.length
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.length
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -3873,11 +3838,10 @@ export default function StructuralPage() {
                                       e.target.value,
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    armErr.expLength
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.expLength
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -3912,11 +3876,10 @@ export default function StructuralPage() {
                                       e.target.value,
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    armErr.zHeight || armErr.height
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.zHeight || armErr.height
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -3951,11 +3914,10 @@ export default function StructuralPage() {
                                       e.target.value,
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    armErr.hDistance
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.hDistance
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   mm
@@ -3990,11 +3952,10 @@ export default function StructuralPage() {
                                       e.target.value,
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    armErr.fixAngle
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.fixAngle
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   deg
@@ -4029,11 +3990,10 @@ export default function StructuralPage() {
                                     e.target.value,
                                   )
                                 }
-                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                  armErr.nnC
+                                className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.nnC
                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                }`}
+                                  }`}
                               />
                               {armErr.nnC && (
                                 <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -4065,11 +4025,10 @@ export default function StructuralPage() {
                                       e.target.value,
                                     )
                                   }
-                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                    armErr.quantity
+                                  className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${armErr.quantity
                                       ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                       : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                   pcs
@@ -4219,11 +4178,10 @@ export default function StructuralPage() {
                                       </div>
 
                                       <div
-                                        className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${
-                                          ao.type === "directional"
+                                        className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 ${ao.type === "directional"
                                             ? "xl:grid-cols-8"
                                             : "xl:grid-cols-7"
-                                        } gap-2.5`}
+                                          } gap-2.5`}
                                       >
                                         <div>
                                           <label
@@ -4247,11 +4205,10 @@ export default function StructuralPage() {
                                                 e.target.value,
                                               )
                                             }
-                                            className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                              aoErr.name
+                                            className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.name
                                                 ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                                 : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                            }`}
+                                              }`}
                                           />
                                           {aoErr.name && (
                                             <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -4281,11 +4238,10 @@ export default function StructuralPage() {
                                                 e.target.value,
                                               )
                                             }
-                                            className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${
-                                              aoErr.type
+                                            className={`w-full h-10 px-2 rounded-md border text-xs md:text-sm outline-none cursor-pointer transition-colors ${aoErr.type
                                                 ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                                 : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                            }`}
+                                              }`}
                                           >
                                             {OBJECT_TYPE_OPTIONS.map((opt) => (
                                               <option
@@ -4327,11 +4283,10 @@ export default function StructuralPage() {
                                                   e.target.value,
                                                 )
                                               }
-                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                                aoErr.frontArea
+                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.frontArea
                                                   ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                                   : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                              }`}
+                                                }`}
                                             />
                                             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                               m²
@@ -4370,11 +4325,10 @@ export default function StructuralPage() {
                                                     e.target.value,
                                                   )
                                                 }
-                                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                                  aoErr.sideArea
+                                                className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.sideArea
                                                     ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                                     : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                                }`}
+                                                  }`}
                                               />
                                               <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                                 m²
@@ -4412,11 +4366,10 @@ export default function StructuralPage() {
                                                   e.target.value,
                                                 )
                                               }
-                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                                aoErr.weight
+                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.weight
                                                   ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                                   : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                              }`}
+                                                }`}
                                             />
                                             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                               kg
@@ -4452,11 +4405,10 @@ export default function StructuralPage() {
                                                   e.target.value,
                                                 )
                                               }
-                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                                aoErr.hDistance
+                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.hDistance
                                                   ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                                   : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                              }`}
+                                                }`}
                                             />
                                             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                               mm
@@ -4492,11 +4444,10 @@ export default function StructuralPage() {
                                                 e.target.value,
                                               )
                                             }
-                                            className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                              aoErr.nnC
+                                            className={`w-full h-10 px-2.5 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.nnC
                                                 ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                                 : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                            }`}
+                                              }`}
                                           />
                                           {aoErr.nnC && (
                                             <p className="text-[10px] text-red-500 mt-1 truncate">
@@ -4529,11 +4480,10 @@ export default function StructuralPage() {
                                                   e.target.value,
                                                 )
                                               }
-                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${
-                                                aoErr.quantity
+                                              className={`w-full h-10 pl-2.5 pr-8 rounded-md border text-xs md:text-sm outline-none transition-colors ${aoErr.quantity
                                                   ? "border-red-500 bg-red-50/50 text-red-900 focus:border-red-600 focus:ring-1 focus:ring-red-600"
                                                   : "border-gray-300 bg-white text-gray-900 focus:border-gray-800 focus:ring-1 focus:ring-gray-800"
-                                              }`}
+                                                }`}
                                             />
                                             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] font-medium pointer-events-none">
                                               pcs
@@ -4594,13 +4544,12 @@ export default function StructuralPage() {
           type="button"
           onClick={handleCalculateClick}
           disabled={calculation.loading}
-          className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${
-            calculation.loading
+          className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 ${calculation.loading
               ? "bg-[#0d3b66] text-white opacity-60 cursor-not-allowed shadow-sm"
               : isReadyToReport
                 ? "bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 shadow-xs cursor-pointer"
                 : "bg-[#0d3b66] hover:bg-[#0a2e50] text-white shadow-sm cursor-pointer"
-          }`}
+            }`}
         >
           {calculation.loading ? (
             <>
@@ -4619,11 +4568,10 @@ export default function StructuralPage() {
           type="button"
           onClick={handleGenerateReport}
           disabled={!isReadyToReport || report.isGeneratingReport}
-          className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 shadow-sm ${
-            isReadyToReport && !report.isGeneratingReport
+          className={`px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 shadow-sm ${isReadyToReport && !report.isGeneratingReport
               ? "bg-[#0d3b66] text-white hover:bg-[#0a2e50] cursor-pointer shadow-sm"
               : "bg-gray-200 text-gray-400 border border-gray-300 cursor-not-allowed"
-          }`}
+            }`}
           title={
             !calculation.isCalculated
               ? "Please calculate results first before generating report."
