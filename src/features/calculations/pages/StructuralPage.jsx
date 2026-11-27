@@ -1412,7 +1412,13 @@ export default function StructuralPage() {
   const handleUpdateArmField = (armIdx, field, value) => {
     armForm.setArms((prev) => {
       const next = [...prev];
-      next[armIdx] = { ...next[armIdx], [field]: value };
+      const updated = { ...next[armIdx], [field]: value };
+      if (field === "height") {
+        updated.zHeight = value;
+      } else if (field === "zHeight") {
+        updated.height = value;
+      }
+      next[armIdx] = updated;
       return next;
     });
   };

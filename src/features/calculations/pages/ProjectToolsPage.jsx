@@ -452,7 +452,12 @@ export default function ProjectToolsPage() {
 
         const taper =
           STANDARD_POLE_DATA.tapered || STANDARD_POLE_DATA.taper || {};
-        const entry = taper[selectedStandard]?.onGL?.[selectedHeight] || {};
+        const underKey = isUnderGL ? getUnderGLKey(selectedHeight) : null;
+        const entry = isUnderGL
+          ? taper[selectedStandard]?.underGL?.[underKey] ||
+            taper[selectedStandard]?.onGL?.[selectedHeight] ||
+            {}
+          : taper[selectedStandard]?.onGL?.[selectedHeight] || {};
 
         let poleStandardHeightId = selectedHeightId || entry.standardId || "";
         let poles = entry.poles || [];
@@ -461,8 +466,7 @@ export default function ProjectToolsPage() {
         let beData = null;
 
         if (isUnderGL) {
-          // Resolve Under GL height ID and Under GL poles
-          const underKey = getUnderGLKey(selectedHeight);
+          // Resolve Under GL height ID
           const underOption = heightOptionsByStandard?.[
             selectedStandard
           ]?.underGL?.find(
@@ -480,133 +484,141 @@ export default function ProjectToolsPage() {
           if (underGLHeightId) {
             poleStandardHeightId = underGLHeightId;
           }
+        }
 
+        // Ambil data geometri lengkap dari Backend API (berlaku untuk onGL, embedment, maupun underGL)
+        if (
+          poleStandardHeightId &&
+          String(poleStandardHeightId) !== "null" &&
+          String(poleStandardHeightId) !== "undefined"
+        ) {
+          try {
+            const beGeom =
+              await getMasterPoleStandardHeightGeometry(poleStandardHeightId);
+            beData = beGeom?.data || beGeom;
+
+            if (
+              Array.isArray(beData?.stepPoles) &&
+              beData.stepPoles.length > 0
+            ) {
+              // Urutkan step poles agar Pole-1 selalu di Step Pole 1, Pole-2 di Step Pole 2, Pole-3 di Step Pole 3
+              const sortedStepPoles = [...beData.stepPoles].sort((a, b) => {
+                const getNum = (name) => {
+                  const m = String(name || "").match(/\d+/);
+                  return m ? Number(m[0]) : 0;
+                };
+                const numA = getNum(a.name);
+                const numB = getNum(b.name);
+                if (numA && numB) return numA - numB;
+                return (
+                  Number(b.topElevationM ?? 0) - Number(a.topElevationM ?? 0)
+                );
+              });
+
+              poles = sortedStepPoles.map((sp, idx) => {
+                const elevM = Number(sp.topElevationM ?? sp.elevationM ?? 0);
+                const heightMm = Math.round(elevM * 1000);
+
+                const poleTypeStr = sp.poleType
+                  ? sp.poleType.toLowerCase() === "straight"
+                    ? "Straight"
+                    : "Taper"
+                  : "Taper";
+
+                const lowerDia = String(
+                  sp.diameterLowerMm ?? sp.lowerDiameter ?? "165",
+                );
+                const upperDia =
+                  poleTypeStr === "Straight"
+                    ? lowerDia
+                    : String(
+                        sp.diameterUpperMm ?? sp.upperDiameter ?? lowerDia,
+                      );
+
+                const lowerThk = String(
+                  sp.thicknessLowerMm ??
+                    sp.thicknessMm ??
+                    sp.lowerThickness ??
+                    "4",
+                );
+                const upperThk =
+                  poleTypeStr === "Straight"
+                    ? lowerThk
+                    : String(
+                        sp.thicknessUpperMm ??
+                          sp.thicknessMm ??
+                          sp.upperThickness ??
+                          lowerThk,
+                      );
+
+                const matName =
+                  typeof sp.material === "object"
+                    ? sp.material?.name || "STK400"
+                    : sp.material || sp.materialName || "STK400";
+
+                return {
+                  id: String(idx + 1),
+                  name: sp.name || `Pole-${idx + 1}`,
+                  material: matName,
+                  poleType: poleTypeStr,
+                  lowerDiameter: lowerDia,
+                  upperDiameter: upperDia,
+                  lowerThickness: lowerThk,
+                  upperThickness: upperThk,
+                  zHeight: String(heightMm),
+                  quantity: String(sp.quantity || "1"),
+                };
+              });
+            }
+
+            // Direct Objects dari Backend (jika BE mengembalikan array kosong [], gunakan [])
+            if (Array.isArray(beData?.directObjects)) {
+              rawDirectObjects = beData.directObjects.map((d, idx) => ({
+                idDo: String(idx + 1),
+                name: d.name || "灯具",
+                type: "omni",
+                frontArea: String(d.frontAreaM2 ?? d.frontArea ?? "0.1"),
+                sideArea: "",
+                weight: String(d.massPerUnitKg ?? d.weight ?? "14"),
+                zHeight: String(
+                  d.elevationM != null
+                    ? Math.round(Number(d.elevationM) * 1000)
+                    : (d.zHeight ?? Number(selectedHeight) * 1000),
+                ),
+                nnC: String(d.baseWindCoefficient ?? d.nnC ?? "1"),
+                quantity: String(d.quantity ?? "1"),
+                fixAngle: "0",
+              }));
+            }
+
+            // Arms dari Backend (jika BE mengembalikan array, gunakan langsung)
+            if (Array.isArray(beData?.arms)) {
+              arms = beData.arms;
+            }
+          } catch (beErr) {
+            console.warn(
+              "[ProjectTools] Fallback to local catalog geometry:",
+              beErr?.message,
+            );
+            if (isUnderGL) {
+              const underPoles = await fetchStandardUnderGLPoles({
+                shortCode: selectedStandard,
+                nominalHeight: selectedHeight,
+                underGLHeightId: poleStandardHeightId,
+              });
+              if (underPoles && underPoles.length > 0) {
+                poles = underPoles;
+              }
+            }
+          }
+        } else if (isUnderGL) {
+          // Fallback lokal Under GL jika tidak ada heightId
           const underPoles = await fetchStandardUnderGLPoles({
             shortCode: selectedStandard,
             nominalHeight: selectedHeight,
-            underGLHeightId,
           });
           if (underPoles && underPoles.length > 0) {
             poles = underPoles;
-          }
-        } else {
-          // On GL or Embedment:
-          // Default data dari BE / entry adalah On GL
-          if (
-            poleStandardHeightId &&
-            String(poleStandardHeightId) !== "null" &&
-            String(poleStandardHeightId) !== "undefined"
-          ) {
-            try {
-              const beGeom =
-                await getMasterPoleStandardHeightGeometry(poleStandardHeightId);
-              beData = beGeom?.data || beGeom;
-
-              if (
-                Array.isArray(beData?.stepPoles) &&
-                beData.stepPoles.length > 0
-              ) {
-                // Urutkan step poles agar Pole-1 selalu di Step Pole 1, Pole-2 di Step Pole 2, Pole-3 di Step Pole 3
-                const sortedStepPoles = [...beData.stepPoles].sort((a, b) => {
-                  const getNum = (name) => {
-                    const m = String(name || "").match(/\d+/);
-                    return m ? Number(m[0]) : 0;
-                  };
-                  const numA = getNum(a.name);
-                  const numB = getNum(b.name);
-                  if (numA && numB) return numA - numB;
-                  return (
-                    Number(b.topElevationM ?? 0) - Number(a.topElevationM ?? 0)
-                  );
-                });
-
-                poles = sortedStepPoles.map((sp, idx) => {
-                  const elevM = Number(sp.topElevationM ?? sp.elevationM ?? 0);
-                  const heightMm = Math.round(elevM * 1000);
-
-                  const poleTypeStr = sp.poleType
-                    ? sp.poleType.toLowerCase() === "straight"
-                      ? "Straight"
-                      : "Taper"
-                    : "Taper";
-
-                  const lowerDia = String(
-                    sp.diameterLowerMm ?? sp.lowerDiameter ?? "165",
-                  );
-                  const upperDia =
-                    poleTypeStr === "Straight"
-                      ? lowerDia
-                      : String(
-                          sp.diameterUpperMm ?? sp.upperDiameter ?? lowerDia,
-                        );
-
-                  const lowerThk = String(
-                    sp.thicknessLowerMm ??
-                      sp.thicknessMm ??
-                      sp.lowerThickness ??
-                      "4",
-                  );
-                  const upperThk =
-                    poleTypeStr === "Straight"
-                      ? lowerThk
-                      : String(
-                          sp.thicknessUpperMm ??
-                            sp.thicknessMm ??
-                            sp.upperThickness ??
-                            lowerThk,
-                        );
-
-                  const matName =
-                    typeof sp.material === "object"
-                      ? sp.material?.name || "STK400"
-                      : sp.material || sp.materialName || "STK400";
-
-                  return {
-                    id: String(idx + 1),
-                    name: sp.name || `Pole-${idx + 1}`,
-                    material: matName,
-                    poleType: poleTypeStr,
-                    lowerDiameter: lowerDia,
-                    upperDiameter: upperDia,
-                    lowerThickness: lowerThk,
-                    upperThickness: upperThk,
-                    zHeight: String(heightMm),
-                    quantity: String(sp.quantity || "1"),
-                  };
-                });
-              }
-
-              if (
-                Array.isArray(beData?.directObjects) &&
-                beData.directObjects.length > 0
-              ) {
-                rawDirectObjects = beData.directObjects.map((d, idx) => ({
-                  idDo: String(idx + 1),
-                  name: d.name || "灯具",
-                  type: "omni",
-                  frontArea: String(d.frontAreaM2 ?? d.frontArea ?? "0.1"),
-                  sideArea: "",
-                  weight: String(d.massPerUnitKg ?? d.weight ?? "14"),
-                  zHeight: String(
-                    d.elevationM
-                      ? Math.round(Number(d.elevationM) * 1000)
-                      : (d.zHeight ?? Number(selectedHeight) * 1000),
-                  ),
-                  nnC: String(d.baseWindCoefficient ?? d.nnC ?? "1"),
-                  quantity: String(d.quantity ?? "1"),
-                  fixAngle: "0",
-                }));
-              }
-
-              if (Array.isArray(beData?.arms)) {
-                arms = beData.arms;
-              }
-            } catch (beErr) {
-              console.warn(
-                "[ProjectTools] Fallback to local catalog geometry:",
-                beErr?.message,
-              );
-            }
           }
         }
 

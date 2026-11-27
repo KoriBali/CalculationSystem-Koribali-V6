@@ -277,12 +277,20 @@ export function mapInputToSchematicParameters({
       ? "tapered"
       : "straight";
 
-    const dia = Number(a.diameter ?? a.Lower_D ?? 60.5);
-    const thk = Number(a.thickness ?? a.t ?? 3.2);
-    const h = Number(a.zHeight ?? a.height ?? a.elevation ?? a.H ?? 0);
-    const len = Number(a.length ?? a.L ?? 1500);
-    const fixAngle = Number(a.fixAngle ?? 0);
-    const vertAngle = Number(a.verticalAngle ?? 0);
+    const dia = Number(a.diameter ?? a.diameterMm ?? a.Lower_D ?? 60.5);
+    const thk = Number(a.thickness ?? a.thicknessMm ?? a.t ?? 3.2);
+    const rawH =
+      a.installationHeightM != null
+        ? Math.round(Number(a.installationHeightM) * 1000)
+        : (a.zHeight ?? a.height ?? a.elevation ?? a.H ?? 0);
+    const h = Number(rawH);
+    const rawLen =
+      a.totalLengthM != null
+        ? Math.round(Number(a.totalLengthM) * 1000)
+        : (a.length ?? a.L ?? 1500);
+    const len = Number(rawLen);
+    const fixAngle = Number(a.fixedAngleDeg ?? a.fixAngle ?? 0);
+    const vertAngle = Number(a.verticalAngleDeg ?? a.verticalAngle ?? 0);
 
     return {
       name: a.name || `Arm ${idx + 1}`,
@@ -315,9 +323,13 @@ export function mapInputToSchematicParameters({
     )
     .slice(0, 3)
     .map((d, idx) => {
-      const areaF = Number(d.areaFront ?? d.frontArea ?? d.area ?? 0.1);
-      const areaS = Number(d.areaSide ?? d.sideArea ?? 0.1);
-      const h = Number(d.zHeight ?? d.height ?? d.H ?? d.elevation ?? 0);
+      const areaF = Number(d.areaFront ?? d.frontArea ?? d.frontAreaM2 ?? d.area ?? 0.1);
+      const areaS = Number(d.areaSide ?? d.sideArea ?? d.sideAreaM2 ?? 0.1);
+      const rawH =
+        d.elevationM != null
+          ? Math.round(Number(d.elevationM) * 1000)
+          : (d.zHeight ?? d.height ?? d.H ?? d.elevation ?? 0);
+      const h = Number(rawH);
       return {
         name: String(d.name || `Object ${idx + 1}`).trim(),
         areaFront: isNaN(areaF) || areaF <= 0 ? 0.1 : areaF,
