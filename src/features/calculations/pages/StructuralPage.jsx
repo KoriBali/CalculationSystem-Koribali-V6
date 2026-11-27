@@ -47,6 +47,7 @@ import {
   AlertCircle,
   RotateCcw,
   X,
+  Calculator,
 } from "lucide-react";
 
 // Hooks Form & Kalkulasi
@@ -4544,7 +4545,10 @@ export default function StructuralPage() {
               <span>Calculating...</span>
             </>
           ) : (
-            <span>Calculate Results</span>
+            <>
+              <Calculator className="w-4 h-4" />
+              <span>Calculate Results</span>
+            </>
           )}
         </button>
 

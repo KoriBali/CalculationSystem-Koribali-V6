@@ -30,9 +30,11 @@ import STANDARD_POLE_DATA from "../data/specStandardPole.json";
 import {
   DIAGRAM_IMAGE_MAP,
   EMBED_IMAGE_MAP,
+  ALL_DIAGRAM_IMAGES,
   DIAGRAM_LABEL_LAYOUT,
   getDiagramLabels,
 } from "../components/forms/pole/standard/taperDiagramConstants";
+import { preloadImagesWhenIdle } from "../utils/preloadImages";
 import {
   fetchStandardUnderGLPoles,
   getUnderGLKey,
@@ -94,6 +96,12 @@ export default function ProjectToolsPage() {
   );
   const [hasStandardError, setHasStandardError] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(false);
+
+  // Preload semua gambar diagram SVG standar saat browser idle agar instan saat dipilih
+  useEffect(() => {
+    return preloadImagesWhenIdle(ALL_DIAGRAM_IMAGES);
+  }, []);
 
   // Cek apakah opsi Embedment tersedia untuk tinggi yang dipilih (khusus 8, 10, 12 m)
   const isEmbedmentAllowed = useMemo(() => {
@@ -233,6 +241,15 @@ export default function ProjectToolsPage() {
     }
     return DIAGRAM_IMAGE_MAP[selectedStandard]?.onGL || null;
   }, [selectedStandard, selectedGroundPosition]);
+
+  // Set isImageLoading setiap kali currentImage berganti
+  useEffect(() => {
+    if (currentImage) {
+      setIsImageLoading(true);
+    } else {
+      setIsImageLoading(false);
+    }
+  }, [currentImage]);
 
   // Label dimensi angka pada diagram tiang
   const diagramLabels = useMemo(() => {
@@ -978,25 +995,22 @@ export default function ProjectToolsPage() {
                     return (
                       <div
                         key={item.key}
-                        className={`w-full rounded-lg border px-3 py-2 text-xs md:text-sm bg-white transition-all ${
+                        onClick={() =>
+                          handleSelectItem(
+                            group.type,
+                            item.key,
+                            item.heightId,
+                          )
+                        }
+                        className={`w-full rounded-lg border px-3 py-2 text-xs md:text-sm bg-white transition-all cursor-pointer ${
                           isSelected
                             ? "border-blue-500 ring-1 ring-blue-500/20 shadow-xs"
-                            : "border-gray-200 hover:border-gray-300"
+                            : "border-gray-200 hover:border-gray-300 hover:bg-slate-50/60"
                         }`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-1.5">
                           {/* Nama Tipe Standard (e.g. IS 8) */}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleSelectItem(
-                                group.type,
-                                item.key,
-                                item.heightId,
-                              )
-                            }
-                            className="flex items-center gap-2 cursor-pointer text-left group shrink-0 py-0.5"
-                          >
+                          <div className="flex items-center gap-2 text-left group shrink-0 py-0.5 select-none">
                             <div className="flex items-center">
                               {isSelected ? (
                                 <CheckCircle className="w-4 h-4 text-blue-600 shrink-0" />
@@ -1011,10 +1025,13 @@ export default function ProjectToolsPage() {
                             >
                               {item.label}
                             </span>
-                          </button>
+                          </div>
 
                           {/* Pilihan Ground Position: On GL, Under GL, Embedment */}
-                          <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap shrink-0">
+                          <div
+                            className="flex items-center gap-1 sm:gap-1.5 flex-wrap shrink-0"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             {groundOptions.map((opt) => {
                               const isOptSelected =
                                 isSelected &&
@@ -1093,8 +1110,20 @@ export default function ProjectToolsPage() {
                 </div>
               ) : (
                 <div className="relative w-full h-full flex items-center justify-center pt-8 pb-3 px-5 sm:px-6">
+                  {/* Loading spinner overlay saat SVG sedang dimuat */}
+                  {isImageLoading && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-50/70 backdrop-blur-[1px] z-20 transition-opacity duration-200">
+                      <Loader2 className="w-6 h-6 animate-spin text-[#0d3b66] mb-2" />
+                      <span className="text-xs font-medium text-gray-500">
+                        Loading diagram preview...
+                      </span>
+                    </div>
+                  )}
+
                   <div
-                    className="relative flex items-center justify-center max-w-full max-h-full h-full w-auto"
+                    className={`relative flex items-center justify-center max-w-full max-h-full h-full w-auto transition-opacity duration-200 ${
+                      isImageLoading ? "opacity-0" : "opacity-100"
+                    }`}
                     style={
                       diagramLayout
                         ? {
@@ -1106,6 +1135,8 @@ export default function ProjectToolsPage() {
                     <img
                       src={currentImage}
                       alt={`Type ${selectedStandard} diagram`}
+                      onLoad={() => setIsImageLoading(false)}
+                      onError={() => setIsImageLoading(false)}
                       className="w-full h-full object-contain pointer-events-none select-none"
                     />
 
@@ -1142,9 +1173,9 @@ export default function ProjectToolsPage() {
             <button
               type="button"
               onClick={handleReset}
-              className="px-4 py-2 border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 rounded text-xs md:text-sm font-medium cursor-pointer transition-colors flex items-center gap-1.5 shadow-xs"
+              className="min-w-[105px] px-6 py-2.5 border border-gray-300 text-gray-700 bg-white hover:bg-gray-100 rounded text-xs md:text-sm font-medium cursor-pointer transition-colors flex items-center justify-center gap-2 shadow-xs"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-gray-600" />
+              <RotateCcw className="w-4 h-4 text-gray-600" />
               <span>Reset</span>
             </button>
 
@@ -1152,7 +1183,7 @@ export default function ProjectToolsPage() {
               type="button"
               onClick={handleNext}
               disabled={isNavigating}
-              className="px-6 py-2.5 rounded text-xs md:text-sm font-medium transition-all flex items-center gap-2 bg-[#0d3b66] text-white hover:bg-[#0a2e50] cursor-pointer shadow-sm disabled:opacity-60"
+              className="min-w-[105px] px-6 py-2.5 border border-[#0d3b66] rounded text-xs md:text-sm font-medium transition-all flex items-center justify-center gap-2 bg-[#0d3b66] text-white hover:bg-[#0a2e50] cursor-pointer shadow-sm disabled:opacity-60"
             >
               {isNavigating ? (
                 <>
