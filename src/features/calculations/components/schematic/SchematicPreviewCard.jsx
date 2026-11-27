@@ -44,30 +44,13 @@ export function SchematicPreviewCard({
         root.insertBefore(newTitle, root.firstChild);
       }
 
-      // Read coordinate viewBox
-      const viewBoxAttr = root.getAttribute("viewBox");
-      let minX = 0;
-      let minY = 0;
-      let vbWidth = 210;
-      let vbHeight = 297;
-      let hasValidVb = false;
-
-      if (viewBoxAttr) {
-        const vb = viewBoxAttr.trim().split(/[\s,]+/).map(Number);
-        if (vb.length === 4 && !vb.some(isNaN)) {
-          [minX, minY, vbWidth, vbHeight] = vb;
-          hasValidVb = true;
-        }
-      }
-
-      // 1. Remove page header/boilerplate titles if present in SVGs
+      // Remove unwanted page header text if present in cached/legacy SVGs
       const textElements = Array.from(root.querySelectorAll("text"));
       textElements.forEach((el) => {
         const text = (el.textContent || "").trim();
         if (
           text.includes("Pole with Parametric Dimensions") ||
-          text.includes("Model units") ||
-          text.includes("A4 portrait") ||
+          text.includes("Model units: mm | A4 portrait") ||
           text.includes("仕様略図") ||
           text === "P-2" ||
           text.startsWith("No.")
@@ -76,154 +59,11 @@ export function SchematicPreviewCard({
         }
       });
 
-      // 2. Remove full-canvas background rects and A4 page border frames
-      // ("jangan terlihat seperti page juga, jadi pure gambarnya aja")
-      const rectElements = Array.from(root.querySelectorAll("rect"));
-      rectElements.forEach((el) => {
-        if (el.closest("defs, clipPath, marker")) return;
-        const wStr = el.getAttribute("width") || "";
-        const hStr = el.getAttribute("height") || "";
-        if (wStr.includes("%") || hStr.includes("%")) {
-          el.remove();
-          return;
-        }
-        const w = parseFloat(wStr);
-        const h = parseFloat(hStr);
-        if (
-          (!isNaN(w) && w >= vbWidth * 0.7 && !isNaN(h) && h >= vbHeight * 0.7) ||
-          (!isNaN(w) && w >= vbWidth * 0.88) ||
-          (!isNaN(h) && h >= vbHeight * 0.88)
-        ) {
-          el.remove();
-        }
-      });
+      // Remove full-page background rect if any (keep all drawing and dimension elements intact)
+      const bgRect = root.querySelector("rect[width='100%'][height='100%'], rect[width='210'][height='297']");
+      if (bgRect) bgRect.remove();
 
-      // 3. Remove page border lines / full-width margin divider lines
-      const lineElements = Array.from(root.querySelectorAll("line"));
-      lineElements.forEach((el) => {
-        if (el.closest("defs, clipPath, marker")) return;
-        const x1 = parseFloat(el.getAttribute("x1"));
-        const y1 = parseFloat(el.getAttribute("y1"));
-        const x2 = parseFloat(el.getAttribute("x2"));
-        const y2 = parseFloat(el.getAttribute("y2"));
-        if (!isNaN(x1) && !isNaN(x2) && !isNaN(y1) && !isNaN(y2)) {
-          const dx = Math.abs(x2 - x1);
-          const dy = Math.abs(y2 - y1);
-          if (
-            dx >= vbWidth * 0.7 &&
-            (Math.min(y1, y2) <= minY + 35 || Math.max(y1, y2) >= minY + vbHeight - 35)
-          ) {
-            el.remove();
-          } else if (dy >= vbHeight * 0.7) {
-            el.remove();
-          }
-        }
-      });
-
-      // 4. Remove page border rectangle paths
-      const pathElements = Array.from(root.querySelectorAll("path"));
-      pathElements.forEach((el) => {
-        if (el.closest("defs, clipPath, marker")) return;
-        const d = el.getAttribute("d") || "";
-        const matches = d.match(/[-+]?[0-9]*\.?[0-9]+/g);
-        if (matches && matches.length >= 8 && matches.length <= 12) {
-          const xs = [];
-          const ys = [];
-          for (let i = 0; i < matches.length; i += 2) {
-            xs.push(parseFloat(matches[i]));
-            if (i + 1 < matches.length) ys.push(parseFloat(matches[i + 1]));
-          }
-          const boxW = Math.max(...xs) - Math.min(...xs);
-          const boxH = Math.max(...ys) - Math.min(...ys);
-          if (boxW >= vbWidth * 0.7 && boxH >= vbHeight * 0.7) {
-            el.remove();
-          }
-        }
-      });
-
-      // 5. Auto-crop excessive empty top and bottom whitespace from the A4 report coordinate space
-      if (hasValidVb) {
-        let contentMinY = Infinity;
-        let contentMaxY = -Infinity;
-
-        const remaining = root.querySelectorAll(
-          "path, line, rect, circle, ellipse, text, polyline, polygon"
-        );
-        remaining.forEach((el) => {
-          if (el.closest("defs, clipPath, marker")) return;
-          const tag = el.localName.toLowerCase();
-          if (tag === "line") {
-            const y1 = parseFloat(el.getAttribute("y1"));
-            const y2 = parseFloat(el.getAttribute("y2"));
-            if (!isNaN(y1)) {
-              contentMinY = Math.min(contentMinY, y1);
-              contentMaxY = Math.max(contentMaxY, y1);
-            }
-            if (!isNaN(y2)) {
-              contentMinY = Math.min(contentMinY, y2);
-              contentMaxY = Math.max(contentMaxY, y2);
-            }
-          } else if (tag === "rect") {
-            const y = parseFloat(el.getAttribute("y"));
-            const h = parseFloat(el.getAttribute("height")) || 0;
-            if (!isNaN(y)) {
-              contentMinY = Math.min(contentMinY, y);
-              contentMaxY = Math.max(contentMaxY, y + h);
-            }
-          } else if (tag === "circle" || tag === "ellipse") {
-            const cy = parseFloat(el.getAttribute("cy"));
-            const r = parseFloat(el.getAttribute("r") || el.getAttribute("ry") || 0);
-            if (!isNaN(cy)) {
-              contentMinY = Math.min(contentMinY, cy - r);
-              contentMaxY = Math.max(contentMaxY, cy + r);
-            }
-          } else if (tag === "text") {
-            const y = parseFloat(el.getAttribute("y"));
-            if (!isNaN(y)) {
-              contentMinY = Math.min(contentMinY, y - 5);
-              contentMaxY = Math.max(contentMaxY, y + 2);
-            }
-          } else if (tag === "path") {
-            const d = el.getAttribute("d") || "";
-            const matches = d.match(/[-+]?[0-9]*\.?[0-9]+/g);
-            if (matches && matches.length >= 2) {
-              for (let i = 1; i < matches.length; i += 2) {
-                const y = parseFloat(matches[i]);
-                if (!isNaN(y)) {
-                  contentMinY = Math.min(contentMinY, y);
-                  contentMaxY = Math.max(contentMaxY, y);
-                }
-              }
-            }
-          } else if (tag === "polyline" || tag === "polygon") {
-            const pointsAttr = el.getAttribute("points") || "";
-            const matches = pointsAttr.match(/[-+]?[0-9]*\.?[0-9]+/g);
-            if (matches && matches.length >= 2) {
-              for (let i = 1; i < matches.length; i += 2) {
-                const y = parseFloat(matches[i]);
-                if (!isNaN(y)) {
-                  contentMinY = Math.min(contentMinY, y);
-                  contentMaxY = Math.max(contentMaxY, y);
-                }
-              }
-            }
-          }
-        });
-
-        // Trim top and bottom blank whitespace if drawing bounds were detected
-        if (contentMinY !== Infinity && contentMaxY !== -Infinity && contentMaxY > contentMinY) {
-          const topPadding = 6;
-          const bottomPadding = 6;
-          const croppedMinY = Math.max(minY, contentMinY - topPadding);
-          const croppedMaxY = Math.min(minY + vbHeight, contentMaxY + bottomPadding);
-          const newHeight = croppedMaxY - croppedMinY;
-          if (newHeight > 20 && newHeight < vbHeight) {
-            root.setAttribute("viewBox", `${minX} ${croppedMinY} ${vbWidth} ${newHeight}`);
-          }
-        }
-      }
-
-      // Scaling matching the Report Page (large, clear, and responsive)
+      // Ensure proper scaling and display with pure vector fidelity
       root.setAttribute("width", "100%");
       root.removeAttribute("height");
       root.setAttribute("preserveAspectRatio", "xMidYMid meet");
