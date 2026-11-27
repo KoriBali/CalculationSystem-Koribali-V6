@@ -258,6 +258,7 @@ export default function StructuralPage() {
   // saat user masih mengetik atau mengedit form (misal saat edit embedment length).
   const [calculatedSchematicSnapshot, setCalculatedSchematicSnapshot] =
     useState(() => ({
+      calcKey: calculation.calculationKey,
       poles: poleForm.poles,
       arms: armForm.arms,
       directObjects: doForm.directObjects,
@@ -272,6 +273,7 @@ export default function StructuralPage() {
   useEffect(() => {
     if (calculation.isCalculated && calculation.calculationKey > 0) {
       setCalculatedSchematicSnapshot({
+        calcKey: calculation.calculationKey,
         poles: JSON.parse(JSON.stringify(poleForm.poles || [])),
         arms: JSON.parse(JSON.stringify(armForm.arms || [])),
         directObjects: JSON.parse(JSON.stringify(doForm.directObjects || [])),
@@ -315,9 +317,9 @@ export default function StructuralPage() {
       schematicData?.generatedSvg || schematicData?.editedSvg,
     );
 
+    const snapshotKey = calculatedSchematicSnapshot?.calcKey ?? 0;
     const isNewCalculation =
-      calculation.calculationKey > 0 &&
-      lastProcessedCalcKeyRef.current !== calculation.calculationKey;
+      snapshotKey > 0 && lastProcessedCalcKeyRef.current !== snapshotKey;
 
     const needsInitialRender =
       !hasSvg && lastProcessedCalcKeyRef.current === -1;
@@ -327,14 +329,14 @@ export default function StructuralPage() {
       return;
     }
 
-    lastProcessedCalcKeyRef.current = calculation.calculationKey;
+    lastProcessedCalcKeyRef.current = snapshotKey;
 
     sendSchematicParameters(schematicParams.payload, {
       standardId: schematicParams.standardId,
       replaceManualEdit: isNewCalculation,
     });
   }, [
-    calculation.calculationKey,
+    calculatedSchematicSnapshot?.calcKey,
     isSchematicReady,
     schematicParams,
     schematicData?.generatedSvg,

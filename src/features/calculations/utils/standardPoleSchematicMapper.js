@@ -143,30 +143,52 @@ export function resolveInstallationSettings({
   const lowestHeightNum = Number(
     poleConfig?.lowestHeight ?? condition?.lowestHeight ?? 0
   );
+
+  const isBaseplate =
+    condition?.installationPole === "baseplate" ||
+    taperPoleStandard?.installationPole === "baseplate" ||
+    condition?.baseplateEnabled === true ||
+    gp === "on_gl" ||
+    gp === "ongl" ||
+    gp === "under_gl" ||
+    gp === "undergl";
+
+  // Periksa semua kemungkinan sumber nilai embedment length secara robust
+  // Hindari jebakan operator ?? terhadap empty string ""
+  const embedCandidates = [
+    poleConfig?.embedmentLength,
+    taperPoleStandard?.embedmentLength,
+    condition?.embedmentLengthMm,
+    condition?.embedmentLength,
+    condition?.embedmentDepth,
+    condition?.depth,
+  ];
+
+  let foundEmbedDepth = null;
+  for (const candidate of embedCandidates) {
+    if (candidate !== undefined && candidate !== null && String(candidate).trim() !== "") {
+      const num = Math.abs(Number(candidate));
+      if (!isNaN(num) && num > 0) {
+        foundEmbedDepth = num;
+        break;
+      }
+    }
+  }
+
   const isEmbed =
-    gp.includes("embed") ||
-    condition?.isEmbedment ||
-    condition?.installationPole === "embedment" ||
-    taperPoleStandard?.installationPole === "embedment" ||
-    Boolean(condition?.embedmentLengthMm) ||
-    Boolean(poleConfig?.embedmentLength) ||
-    Boolean(taperPoleStandard?.embedmentLength);
+    !isBaseplate &&
+    (gp.includes("embed") ||
+      condition?.isEmbedment ||
+      condition?.installationPole === "embedment" ||
+      taperPoleStandard?.installationPole === "embedment" ||
+      foundEmbedDepth !== null);
 
   const isUnder = !isEmbed && (gp.includes("under") || lowestHeightNum < 0);
 
   if (isEmbed) {
-    const embedValue =
-      poleConfig?.embedmentLength ??
-      taperPoleStandard?.embedmentLength ??
-      condition?.embedmentLengthMm ??
-      condition?.embedmentLength ??
-      condition?.embedmentDepth ??
-      condition?.depth;
-
-    const rawDepth = Math.abs(Number(embedValue));
     const depth =
-      !isNaN(rawDepth) && rawDepth > 0
-        ? rawDepth
+      foundEmbedDepth !== null
+        ? foundEmbedDepth
         : lowestHeightNum !== 0
           ? Math.abs(lowestHeightNum)
           : 1500;
