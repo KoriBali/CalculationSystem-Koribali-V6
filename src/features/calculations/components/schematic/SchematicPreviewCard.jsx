@@ -39,7 +39,10 @@ export function SchematicPreviewCard({
       if (titleElem) {
         titleElem.textContent = "Structural Schematic Preview";
       } else {
-        const newTitle = doc.createElementNS("http://www.w3.org/2000/svg", "title");
+        const newTitle = doc.createElementNS(
+          "http://www.w3.org/2000/svg",
+          "title",
+        );
         newTitle.textContent = "Structural Schematic Preview";
         root.insertBefore(newTitle, root.firstChild);
       }
@@ -60,7 +63,9 @@ export function SchematicPreviewCard({
       });
 
       // Remove full-page background rect if any (keep all drawing and dimension elements intact)
-      const bgRect = root.querySelector("rect[width='100%'][height='100%'], rect[width='210'][height='297']");
+      const bgRect = root.querySelector(
+        "rect[width='100%'][height='100%'], rect[width='210'][height='297']",
+      );
       if (bgRect) bgRect.remove();
 
       // Ensure proper scaling and display with pure vector fidelity
@@ -69,7 +74,7 @@ export function SchematicPreviewCard({
       root.setAttribute("preserveAspectRatio", "xMidYMid meet");
       root.setAttribute(
         "style",
-        "max-height: 245mm; width: 100%; height: auto; max-width: 100%; margin: 0 auto; display: block;"
+        "max-height: 245mm; width: 100%; height: auto; max-width: 100%; margin: 0 auto; display: block;",
       );
       return new XMLSerializer().serializeToString(root);
     } catch (err) {
@@ -107,7 +112,8 @@ export function SchematicPreviewCard({
                 "The structural schematic drawing engine currently supports configurations up to 3 pole segments. Full schematic visualization for 4+ segments will be supported in an upcoming update."}
             </p>
             <p className="text-[11px] text-gray-400 mt-2">
-              All structural calculations and engineering checks above remain fully computed and verified.
+              All structural calculations and engineering checks above remain
+              fully computed and verified.
             </p>
           </div>
         ) : isGenerating && !sanitizedSvgContent ? (
@@ -127,7 +133,8 @@ export function SchematicPreviewCard({
               dangerouslySetInnerHTML={{ __html: sanitizedSvgContent }}
             />
           </div>
-        ) : typeof svg === "string" && (svg.startsWith("/") || svg.startsWith("http")) ? (
+        ) : typeof svg === "string" &&
+          (svg.startsWith("/") || svg.startsWith("http")) ? (
           <div className="w-full max-w-[720px] mx-auto flex items-start justify-center">
             <img
               src={svg}
@@ -141,7 +148,7 @@ export function SchematicPreviewCard({
             <p className="text-sm font-semibold text-gray-600">
               Schematic preview is being prepared...
             </p>
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-sm text-gray-400 mt-1">
               Ensure calculation has completed to view the parametric drawing.
             </p>
           </div>
