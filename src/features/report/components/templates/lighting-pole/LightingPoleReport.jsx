@@ -13,6 +13,8 @@ export default function LightingPoleReport({
   schematicSvg,
   isSchematicEdited,
   isSchematicGenerating,
+  isSchematicSupported = true,
+  schematicUnsupportedReason = null,
   onEditSchematic,
   onRegenerateSchematic,
   officialReport,
@@ -68,6 +70,8 @@ export default function LightingPoleReport({
         schematicSvg={schematicSvg}
         isSchematicEdited={isSchematicEdited}
         isSchematicGenerating={isSchematicGenerating}
+        isSchematicSupported={isSchematicSupported}
+        schematicUnsupportedReason={schematicUnsupportedReason}
         onEditSchematic={onEditSchematic}
         onRegenerateSchematic={onRegenerateSchematic}
       />

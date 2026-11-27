@@ -1,8 +1,22 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { validateSvg } from "../utils/schematicValidator";
 
-export const DEFAULT_SCHEMATIC_URL =
-  import.meta.env.VITE_SCHEMATIC_URL || "http://127.0.0.1:8080";
+export function normalizeSchematicUrl(urlStr) {
+  if (!urlStr) return "http://127.0.0.1:8080/schematic_v2.html";
+  try {
+    const u = new URL(urlStr, window.location.href);
+    if (!u.pathname || u.pathname === "/" || u.pathname.endsWith("/index.html")) {
+      u.pathname = "/schematic_v2.html";
+    }
+    return u.toString();
+  } catch {
+    return urlStr;
+  }
+}
+
+export const DEFAULT_SCHEMATIC_URL = normalizeSchematicUrl(
+  import.meta.env.VITE_SCHEMATIC_URL || "http://127.0.0.1:8080/schematic_v2.html"
+);
 
 /**
  * useSchematicBridge
@@ -75,7 +89,10 @@ export function useSchematicBridge({
   // Command: SET_PARAMETERS
   const sendParameters = useCallback(
     (payload, { standardId = null, replaceManualEdit = false } = {}) => {
-      const reqId = `gen-${Date.now()}`;
+      const reqId =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `gen-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       lastRequestIdRef.current = reqId;
       setIsGenerating(true);
       setError(null);
@@ -93,6 +110,8 @@ export function useSchematicBridge({
       updateData((prev) => ({
         ...prev,
         ...(standardId ? { standardId } : {}),
+        isBlocked: false,
+        blockedMessage: null,
         ...(replaceManualEdit || (standardId && prev.standardId && prev.standardId !== standardId)
           ? { editedSvg: null }
           : {}),
@@ -116,7 +135,10 @@ export function useSchematicBridge({
   // Command: OPEN_PROJECT
   const openProject = useCallback(
     (project) => {
-      const reqId = `proj-${Date.now()}`;
+      const reqId =
+        typeof crypto !== "undefined" && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `proj-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       lastRequestIdRef.current = reqId;
       setIsGenerating(true);
       setError(null);
@@ -172,6 +194,7 @@ export function useSchematicBridge({
 
       switch (type) {
         case "SCHEMATIC_EDITOR_CANCELLED":
+        case "SCHEMATIC_PROJECT_CANCELLED":
         case "SCHEMATIC_CANCEL":
         case "SCHEMATIC_CANCELLED":
         case "SCHEMATIC_CANCELED":
@@ -181,6 +204,7 @@ export function useSchematicBridge({
         case "EDITOR_CANCEL":
         case "EDITOR_CANCELLED":
         case "EDITOR_CLOSED": {
+          setIsGenerating(false);
           if (onCancel) onCancel();
           break;
         }
@@ -198,12 +222,16 @@ export function useSchematicBridge({
           try {
             const rawSvg = payload?.svg || "";
             const cleanSvg = rawSvg ? validateSvg(rawSvg) : "";
+            const isBlocked = Boolean(payload?.blocked);
+            const isStale = Boolean(payload?.isStale);
 
             updateData((prev) => ({
               ...prev,
               generatedSvg: cleanSvg || prev.generatedSvg,
-              isStale: Boolean(payload?.isStale),
-              ...(cleanSvg && !payload?.blocked ? { editedSvg: null } : {}),
+              isStale,
+              isBlocked,
+              blockedMessage: payload?.message || null,
+              ...(cleanSvg && !isBlocked ? { editedSvg: null } : {}),
             }));
           } catch (err) {
             console.error("[SchematicBridge] Generated SVG validation error:", err);
@@ -222,6 +250,8 @@ export function useSchematicBridge({
               ...prev,
               editedSvg: cleanSvg,
               isStale: false,
+              isBlocked: false,
+              blockedMessage: null,
             }));
 
             if (onApplied) onApplied(cleanSvg);
@@ -285,6 +315,8 @@ export function useSchematicBridge({
     error,
     schematicData,
     finalSvg,
+    isBlocked: Boolean(schematicData?.isBlocked),
+    blockedMessage: schematicData?.blockedMessage || null,
     sendParameters,
     resetToDefault,
     openEditor,

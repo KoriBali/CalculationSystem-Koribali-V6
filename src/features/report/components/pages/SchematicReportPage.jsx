@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Edit3, CheckCircle2, Pencil, Loader2, RotateCcw } from "lucide-react";
+import { Edit3, CheckCircle2, Pencil, Loader2, RotateCcw, AlertCircle } from "lucide-react";
 import { validateSvg } from "../../../calculations/utils/schematicValidator";
 
 /**
@@ -16,6 +16,8 @@ export function SchematicReportPage({
   onRegenerate,
   isEdited = false,
   isGenerating = false,
+  isSupported = true,
+  unsupportedMessage = null,
 }) {
   // Validate and parse SVG
   const sanitizedSvgContent = useMemo(() => {
@@ -70,7 +72,7 @@ export function SchematicReportPage({
     }
   }, [svg]);
 
-  if (!svg && !isGenerating) {
+  if (!svg && !isGenerating && isSupported) {
     return null;
   }
 
@@ -79,7 +81,12 @@ export function SchematicReportPage({
       {/* Toolbar (SCREEN ONLY - HIDDEN ON PRINT), aligned to the A4 page width */}
       <div className="print:hidden w-[210mm] max-w-full mx-auto mt-6 mb-3 flex items-center justify-between gap-3 px-1">
         <div className="flex items-center gap-2 min-w-0">
-          {isEdited ? (
+          {!isSupported ? (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-medium bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200/80">
+              <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              Notice: 4+ Segments
+            </span>
+          ) : isEdited ? (
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] sm:text-xs font-medium bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200/80">
               <Pencil className="w-3 h-3 text-amber-600 shrink-0" />
               Manually Edited
@@ -93,7 +100,7 @@ export function SchematicReportPage({
         </div>
 
         <div className="flex items-center gap-2">
-          {isEdited && onRegenerate && (
+          {isSupported && isEdited && onRegenerate && (
             <button
               type="button"
               onClick={onRegenerate}
@@ -105,7 +112,7 @@ export function SchematicReportPage({
             </button>
           )}
 
-          {onEdit && (
+          {isSupported && onEdit && (
             <button
               type="button"
               onClick={onEdit}
@@ -139,7 +146,23 @@ export function SchematicReportPage({
 
         {/* Page Content: SVG Schematic */}
         <div className="flex-1 w-full flex items-center justify-center overflow-hidden py-1 schematic-svg-container">
-          {isGenerating && !sanitizedSvgContent && !svg ? (
+          {!isSupported ? (
+            <div className="flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
+              <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center mb-3">
+                <AlertCircle className="w-6 h-6 text-amber-600" />
+              </div>
+              <h3 className="text-sm font-semibold text-slate-800 mb-1.5">
+                Schematic Drawing Unavailable
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                {unsupportedMessage ||
+                  "The structural schematic drawing engine currently supports configurations up to 3 pole segments. Full schematic visualization for 4+ segments will be supported in an upcoming update."}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                All structural calculations and engineering checks above remain fully computed and verified.
+              </p>
+            </div>
+          ) : isGenerating && !sanitizedSvgContent && !svg ? (
             <div className="flex flex-col items-center justify-center p-8 text-slate-400">
               <Loader2 className="w-8 h-8 animate-spin text-[#3399cc] mb-2" />
               <p className="text-xs font-medium">Memuat gambar skematik...</p>

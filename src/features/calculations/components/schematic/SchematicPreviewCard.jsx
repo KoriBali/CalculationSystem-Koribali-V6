@@ -12,6 +12,8 @@ export function SchematicPreviewCard({
   svg,
   isGenerating = false,
   isReady = true,
+  isSupported = true,
+  unsupportedMessage = null,
 }) {
   // Validate, parse, and auto-crop SVG markup for a tight, high-clarity preview
   const sanitizedSvgContent = useMemo(() => {
@@ -252,7 +254,23 @@ export function SchematicPreviewCard({
 
       {/* ── Schematic Drawing Content (Pure Vector Drawing, Tight Gap) ── */}
       <div className="py-3 px-2 sm:py-4 sm:px-4 bg-white flex items-start justify-center overflow-x-auto">
-        {isGenerating && !sanitizedSvgContent ? (
+        {!isSupported ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4 max-w-lg mx-auto text-center">
+            <div className="w-12 h-12 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center mb-3">
+              <AlertCircle className="w-6 h-6 text-amber-600" />
+            </div>
+            <h3 className="text-sm font-semibold text-gray-900 mb-1.5">
+              Schematic Preview Unavailable
+            </h3>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              {unsupportedMessage ||
+                "The structural schematic drawing engine currently supports configurations up to 3 pole segments. Full schematic visualization for 4+ segments will be supported in an upcoming update."}
+            </p>
+            <p className="text-[11px] text-gray-400 mt-2">
+              All structural calculations and engineering checks above remain fully computed and verified.
+            </p>
+          </div>
+        ) : isGenerating && !sanitizedSvgContent ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400">
             <Loader2 className="w-10 h-10 animate-spin text-blue-600 mb-3" />
             <p className="text-sm font-semibold text-gray-700">

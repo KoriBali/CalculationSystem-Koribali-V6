@@ -34,6 +34,8 @@ export default function LightingPoleReportContent({
   schematicSvg = null,
   isSchematicEdited = false,
   isSchematicGenerating = false,
+  isSchematicSupported = true,
+  schematicUnsupportedReason = null,
   onEditSchematic = null,
   onRegenerateSchematic = null,
 }) {
@@ -336,15 +338,17 @@ export default function LightingPoleReportContent({
       </div>
 
       {/* ============================= PAGE 2 (SCHEMATIC) ============================= */}
-      {(schematicSvg || isSchematicGenerating) && (
+      {(schematicSvg || isSchematicGenerating || !isSchematicSupported) && (
         <SchematicReportPage
           svg={schematicSvg}
           calculationNumber={cover?.calculationNumber ?? ""}
           pageNumber={2}
-          onEdit={onEditSchematic}
-          onRegenerate={onRegenerateSchematic}
+          onEdit={isSchematicSupported ? onEditSchematic : null}
+          onRegenerate={isSchematicSupported ? onRegenerateSchematic : null}
           isEdited={isSchematicEdited}
           isGenerating={isSchematicGenerating}
+          isSupported={isSchematicSupported}
+          unsupportedMessage={schematicUnsupportedReason}
         />
       )}
 
@@ -353,7 +357,7 @@ export default function LightingPoleReportContent({
         <div className="page-preview" key={i}>
           <div className="page-a4">
             <div className="page-header">
-              No. {cover?.calculationNumber ?? ""} P-{i + (schematicSvg ? 3 : 2)}
+              No. {cover?.calculationNumber ?? ""} P-{i + (schematicSvg || !isSchematicSupported ? 3 : 2)}
             </div>
             <div className="page1-content">{pageBlocks}</div>
           </div>

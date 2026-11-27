@@ -1174,7 +1174,7 @@ export function ReportView() {
 
   const lastRequestedStandardIdRef = useRef("");
   useEffect(() => {
-    if (!schematicParams || !isReady) return;
+    if (!schematicParams || !isReady || !schematicParams.isSupported) return;
     if (
       schematicData?.generatedSvg &&
       schematicData?.standardId === schematicParams.standardId
@@ -1262,6 +1262,8 @@ export function ReportView() {
       schematicSvg: reportSchematicSvg,
       isSchematicEdited: Boolean(schematicData?.editedSvg),
       isSchematicGenerating: isGenerating,
+      isSchematicSupported: schematicParams?.isSupported ?? true,
+      schematicUnsupportedReason: schematicParams?.unsupportedReason ?? null,
       onEditSchematic: handleEditSchematic,
       onRegenerateSchematic: handleRegenerateSchematic,
     };

@@ -210,6 +210,22 @@ export default function StructuralPage() {
 
   const resultsTableRef = useRef(null);
 
+  // ─── STANDARD PRESET & GROUND POSITION ──────────────────────────────────────
+  const standardPreset = useMemo(() => {
+    try {
+      const raw = sessionStorage.getItem(`${projectType}_standardPreset`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, [projectType]);
+
+  const activeGroundPosition =
+    poleStandardForm.taperPoleStandard?.groundPosition ||
+    standardPreset?.groundPosition ||
+    condition?.groundPosition ||
+    "onGL";
+
   // ─── SCHEMATIC BRIDGE (Vector Schematic Engine) ──────────────────────────
   const schematicIframeRef = useRef(null);
   const [isSchematicEditorOpen, setIsSchematicEditorOpen] = useState(false);
@@ -219,9 +235,11 @@ export default function StructuralPage() {
     isGenerating: isSchematicGenerating,
     schematicData,
     finalSvg: schematicFinalSvg,
+    isBlocked: isSchematicBlocked,
     sendParameters: sendSchematicParameters,
     resetToDefault: resetSchematicToDefault,
     openEditor: openSchematicEditor,
+    updateData: updateSchematicData,
   } = useSchematicBridge({
     iframeRef: schematicIframeRef,
     schematicUrl: DEFAULT_SCHEMATIC_URL,
@@ -242,6 +260,7 @@ export default function StructuralPage() {
       overheadWires: ohwForm.overheadWires,
       condition,
       poleConfig: poleConfigForm.poleConfig,
+      groundPosition: activeGroundPosition,
       taperPoleStandard: poleStandardForm.taperPoleStandard,
     });
   }, [
@@ -251,13 +270,19 @@ export default function StructuralPage() {
     ohwForm.overheadWires,
     condition,
     poleConfigForm.poleConfig,
+    activeGroundPosition,
     poleStandardForm.taperPoleStandard,
   ]);
 
   const lastProcessedCalcKeyRef = useRef(calculation.calculationKey);
 
   useEffect(() => {
-    if (!calculation.isCalculated || !schematicParams || !isSchematicReady)
+    if (
+      !calculation.isCalculated ||
+      !schematicParams ||
+      !isSchematicReady ||
+      !schematicParams.isSupported
+    )
       return;
 
     const isNewCalculation =
@@ -276,7 +301,7 @@ export default function StructuralPage() {
 
     sendSchematicParameters(schematicParams.payload, {
       standardId: schematicParams.standardId,
-      replaceManualEdit: isNewCalculation,
+      replaceManualEdit: false,
     });
   }, [
     calculation.isCalculated,
@@ -554,23 +579,7 @@ export default function StructuralPage() {
     calculation.resetCalculation?.();
   };
 
-  // ─── STANDARD PRESET & MODIFICATION TRACKING ─────────────────────────────────
-  const standardPreset = useMemo(() => {
-    try {
-      const raw = sessionStorage.getItem(`${projectType}_standardPreset`);
-      return raw ? JSON.parse(raw) : null;
-    } catch {
-      return null;
-    }
-  }, [projectType]);
-
   // ─── GROUND MODE & LOWEST HEIGHT CONFIGURATION ──────────────────────────────
-  const activeGroundPosition =
-    poleStandardForm.taperPoleStandard?.groundPosition ||
-    standardPreset?.groundPosition ||
-    condition?.groundPosition ||
-    "onGL";
-
   const isEmbedment =
     isStandard &&
     (activeGroundPosition === "embedment" ||
@@ -4601,7 +4610,49 @@ export default function StructuralPage() {
             svg={previewSchematicSvg}
             isGenerating={isSchematicGenerating}
             isReady={isSchematicReady}
+            isSupported={schematicParams?.isSupported ?? true}
+            unsupportedMessage={schematicParams?.unsupportedReason}
           />
+        </div>
+      )}
+
+      {/* Floating Prompt if manual SVG edit is preserved after new calculation */}
+      {isSchematicBlocked && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-white border border-amber-300 rounded-xl shadow-xl p-4 flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="text-xs text-gray-700">
+              <p className="font-semibold text-gray-900 mb-1">
+                Manual Edits Preserved
+              </p>
+              <p>
+                Previous manual SVG edits were kept. Would you like to overwrite them with the new calculation parameters?
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-1 border-t border-gray-100">
+            <button
+              type="button"
+              onClick={() => updateSchematicData({ isBlocked: false })}
+              className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+            >
+              Keep Manual Edits
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (schematicParams) {
+                  sendSchematicParameters(schematicParams.payload, {
+                    standardId: schematicParams.standardId,
+                    replaceManualEdit: true,
+                  });
+                }
+              }}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-[#0d3b66] hover:bg-[#0a2e50] rounded-md transition-colors shadow-xs cursor-pointer"
+            >
+              Overwrite & Apply
+            </button>
+          </div>
         </div>
       )}
 

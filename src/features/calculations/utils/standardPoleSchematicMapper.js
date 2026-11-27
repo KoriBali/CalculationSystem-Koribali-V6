@@ -123,6 +123,59 @@ export function mapSchematicOverheadWires(rawList) {
 }
 
 /**
+ * Resolves installation setting object for Amir's Schematic Engine V2.
+ * Output: { type: 'on-gl' | 'embedment' | 'baseplate-under-gl', depth: number }
+ */
+export function resolveInstallationSettings({
+  condition = {},
+  poleConfig = {},
+  groundPosition = null,
+  taperPoleStandard = null,
+}) {
+  const gp = String(
+    groundPosition ||
+      taperPoleStandard?.groundPosition ||
+      condition?.groundPosition ||
+      condition?.activeGroundPosition ||
+      ""
+  ).toLowerCase();
+
+  const lowestHeightNum = Number(
+    poleConfig?.lowestHeight ?? condition?.lowestHeight ?? 0
+  );
+  const isEmbed =
+    gp.includes("embed") ||
+    condition?.isEmbedment ||
+    Boolean(condition?.embedmentLengthMm);
+  const isUnder = !isEmbed && (gp.includes("under") || lowestHeightNum < 0);
+
+  if (isEmbed) {
+    const rawDepth = Math.abs(
+      Number(
+        condition?.embedmentLengthMm ??
+          condition?.embedmentDepth ??
+          condition?.depth ??
+          (lowestHeightNum !== 0 ? lowestHeightNum : 1500)
+      )
+    );
+    const depth = isNaN(rawDepth) || rawDepth <= 0 ? 1500 : rawDepth;
+    return { type: "embedment", depth };
+  }
+
+  if (isUnder) {
+    const rawDepth = Math.abs(
+      lowestHeightNum !== 0
+        ? lowestHeightNum
+        : Number(condition?.depth ?? 300)
+    );
+    const depth = isNaN(rawDepth) || rawDepth <= 0 ? 300 : rawDepth;
+    return { type: "baseplate-under-gl", depth };
+  }
+
+  return { type: "on-gl", depth: 0 };
+}
+
+/**
  * MAPPING DATA INPUTAN MURNI KE SKEMATIK PAK AMIR:
  * Memetakan langsung dari variabel input aktif (poles, arms, directObjects, overheadWires)
  * tanpa bergantung pada spec data standar katalog statis.
@@ -135,13 +188,28 @@ export function mapInputToSchematicParameters({
   overheadWires = [],
   condition = {},
   poleConfig = {},
+  groundPosition = null,
   taperPoleStandard = null,
 }) {
   if (!Array.isArray(poles) || poles.length === 0) {
     return null;
   }
 
-  // 1. Hitung panjang segmen masing-masing step pole
+  const isSupported = poles.length >= 1 && poles.length <= 3;
+  const unsupportedReason =
+    poles.length > 3
+      ? "The structural schematic drawing engine currently supports configurations up to 3 pole segments. Full schematic visualization for 4+ segments will be supported in an upcoming update. All structural calculations and engineering checks above remain fully computed and verified."
+      : null;
+
+  // 1. Installation Settings
+  const installation = resolveInstallationSettings({
+    condition,
+    poleConfig,
+    groundPosition,
+    taperPoleStandard,
+  });
+
+  // 2. Hitung panjang segmen masing-masing step pole
   const rawHeights = poles.map((p) => {
     const raw = Number(p.zHeight ?? p.height ?? p.H ?? 0);
     return isNaN(raw) ? 0 : raw;
@@ -149,7 +217,7 @@ export function mapInputToSchematicParameters({
 
   const segmentHeights = resolveSegmentHeights(rawHeights);
 
-  // 2. Petakan Step Poles (Maksimal 3 segmen untuk drawing engine)
+  // 3. Petakan Step Poles (Maksimal 3 segmen untuk drawing engine)
   const mappedPoles = poles.slice(0, 3).map((p, idx) => {
     const rawType = String(p.poleType || p.type || "").toLowerCase();
     const isTapered =
@@ -190,7 +258,7 @@ export function mapInputToSchematicParameters({
     };
   });
 
-  // 3. Petakan Arms (Maksimal 2 arms untuk drawing engine)
+  // 4. Petakan Arms (Maksimal 2 arms untuk drawing engine)
   const mappedArms = (arms || []).slice(0, 2).map((a, idx) => {
     const armType = String(a.armType || a.type || "")
       .toLowerCase()
@@ -223,35 +291,62 @@ export function mapInputToSchematicParameters({
     };
   });
 
-  // 4. Petakan Direct Objects (Maksimal 1 untuk drawing engine)
-  const mappedDOs = (directObjects || []).slice(0, 1).map((d) => ({
-    name: d.name || "灯具",
-    height: Number(d.zHeight ?? d.height ?? d.H ?? 0),
-    quantity: Number(d.quantity || 1),
-  }));
+  // 5. Petakan Direct Objects (Maksimal 3 untuk drawing engine V2)
+  const mappedDOs = (directObjects || [])
+    .filter(
+      (d) =>
+        d &&
+        (d.name ||
+          d.zHeight != null ||
+          d.height != null ||
+          d.areaFront != null ||
+          d.areaSide != null)
+    )
+    .slice(0, 3)
+    .map((d, idx) => {
+      const areaF = Number(d.areaFront ?? d.frontArea ?? d.area ?? 0.1);
+      const areaS = Number(d.areaSide ?? d.sideArea ?? 0.1);
+      const h = Number(d.zHeight ?? d.height ?? d.H ?? d.elevation ?? 0);
+      return {
+        name: String(d.name || `Object ${idx + 1}`).trim(),
+        areaFront: isNaN(areaF) || areaF <= 0 ? 0.1 : areaF,
+        areaSide: isNaN(areaS) || areaS < 0 ? 0.1 : areaS,
+        height: isNaN(h) ? 0 : h,
+        quantity: Math.max(1, Number(d.quantity || 1)),
+      };
+    });
 
-  // 5. Petakan Overhead Wires (Maksimal 4 untuk drawing engine)
+  // 6. Petakan Overhead Wires (Maksimal 4 untuk drawing engine)
   const mappedOHWs = mapSchematicOverheadWires(overheadWires);
 
   // Buat signature standarId unik untuk identifikasi & perbandingan cache
+  const installSig = `${installation.type}_${installation.depth}`;
   const poleSig = mappedPoles
     .map((p) => `${p.type}_${p.Lower_D}_${p.Upper_D}_${p.height}`)
     .join("-");
   const armSig = mappedArms
     .map((a) => `${a.height}_${a.length}_${a.fixAngle}`)
     .join("-");
-  const doSig = mappedDOs.map((d) => `${d.height}_${d.quantity}`).join("-");
-  const ohwSig = mappedOHWs.map((o) => `${o.height}_${o.span}_${o.fixAngle}`).join("-");
+  const doSig = mappedDOs
+    .map((d) => `${d.height}_${d.areaFront}_${d.quantity}`)
+    .join("-");
+  const ohwSig = mappedOHWs
+    .map((o) => `${o.height}_${o.span}_${o.fixAngle}`)
+    .join("-");
 
-  const standardId = `SCH-${poleSig}${armSig ? `_a${armSig}` : ""}${doSig ? `_d${doSig}` : ""}${ohwSig ? `_o${ohwSig}` : ""}`;
+  const standardId = `SCH-${installSig}-${poleSig}${armSig ? `_a${armSig}` : ""}${doSig ? `_d${doSig}` : ""}${ohwSig ? `_o${ohwSig}` : ""}`;
 
   return {
+    isSupported,
+    unsupportedReason,
     standardId,
     poleType: mappedPoles[0]?.type || "tapered",
     payload: {
+      installation,
       poles: mappedPoles,
       arms: mappedArms,
       directObjects: mappedDOs,
+      overheadWires: mappedOHWs,
       overHeadWires: mappedOHWs,
     },
   };
@@ -271,6 +366,7 @@ export function getStandardPoleSchematicParameters({
   poleTypeStandard = null,
   condition = {},
   poleConfig = {},
+  groundPosition = null,
 }) {
   // Jika data input poles tersedia, petakan langsung dari data input
   if (Array.isArray(poles) && poles.length > 0) {
@@ -281,6 +377,7 @@ export function getStandardPoleSchematicParameters({
       overheadWires,
       condition,
       poleConfig,
+      groundPosition,
       taperPoleStandard,
     });
   }
