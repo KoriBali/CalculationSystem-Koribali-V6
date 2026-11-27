@@ -252,8 +252,12 @@ export default function StructuralPage() {
     },
   });
 
-  const schematicParams = useMemo(() => {
-    return mapInputToSchematicParameters({
+  // ─── CALCULATED SCHEMATIC SNAPSHOT ─────────────────────────────────────────
+  // Snapshot parameter input yang terakhir dikalkulasi (Calculate Results).
+  // Skematik HANYA berubah saat kalkulasi baru dieksekusi, BUKAN secara reaktif
+  // saat user masih mengetik atau mengedit form (misal saat edit embedment length).
+  const [calculatedSchematicSnapshot, setCalculatedSchematicSnapshot] =
+    useState(() => ({
       poles: poleForm.poles,
       arms: armForm.arms,
       directObjects: doForm.directObjects,
@@ -262,41 +266,64 @@ export default function StructuralPage() {
       poleConfig: poleConfigForm.poleConfig,
       groundPosition: activeGroundPosition,
       taperPoleStandard: poleStandardForm.taperPoleStandard,
-    });
+    }));
+
+  // Update snapshot skematik HANYA saat kalkulasi berhasil dijalankan
+  useEffect(() => {
+    if (calculation.isCalculated && calculation.calculationKey > 0) {
+      setCalculatedSchematicSnapshot({
+        poles: JSON.parse(JSON.stringify(poleForm.poles || [])),
+        arms: JSON.parse(JSON.stringify(armForm.arms || [])),
+        directObjects: JSON.parse(JSON.stringify(doForm.directObjects || [])),
+        overheadWires: JSON.parse(JSON.stringify(ohwForm.overheadWires || [])),
+        condition: JSON.parse(JSON.stringify(condition || {})),
+        poleConfig: JSON.parse(JSON.stringify(poleConfigForm.poleConfig || {})),
+        groundPosition: activeGroundPosition,
+        taperPoleStandard: poleStandardForm.taperPoleStandard
+          ? JSON.parse(JSON.stringify(poleStandardForm.taperPoleStandard))
+          : null,
+      });
+    }
   }, [
-    poleForm.poles,
-    armForm.arms,
-    doForm.directObjects,
-    ohwForm.overheadWires,
-    condition,
-    poleConfigForm.poleConfig,
+    calculation.calculationKey,
+    calculation.isCalculated,
     activeGroundPosition,
-    poleStandardForm.taperPoleStandard,
   ]);
 
-  const lastProcessedCalcKeyRef = useRef(calculation.calculationKey);
+  const schematicParams = useMemo(() => {
+    if (!calculatedSchematicSnapshot) return null;
+    return mapInputToSchematicParameters({
+      poles: calculatedSchematicSnapshot.poles,
+      arms: calculatedSchematicSnapshot.arms,
+      directObjects: calculatedSchematicSnapshot.directObjects,
+      overheadWires: calculatedSchematicSnapshot.overheadWires,
+      condition: calculatedSchematicSnapshot.condition,
+      poleConfig: calculatedSchematicSnapshot.poleConfig,
+      groundPosition: calculatedSchematicSnapshot.groundPosition,
+      taperPoleStandard: calculatedSchematicSnapshot.taperPoleStandard,
+    });
+  }, [calculatedSchematicSnapshot]);
+
+  const lastProcessedCalcKeyRef = useRef(-1);
 
   useEffect(() => {
-    if (
-      !calculation.isCalculated ||
-      !schematicParams ||
-      !isSchematicReady ||
-      !schematicParams.isSupported
-    )
+    if (!schematicParams || !isSchematicReady || !schematicParams.isSupported) {
       return;
+    }
 
-    const isNewCalculation =
-      lastProcessedCalcKeyRef.current !== calculation.calculationKey;
-    const isStandardChanged = Boolean(
-      schematicData?.standardId &&
-      schematicData.standardId !== schematicParams.standardId,
-    );
     const hasSvg = Boolean(
       schematicData?.generatedSvg || schematicData?.editedSvg,
     );
 
-    // Only send parameters when a fresh calculation was performed (or initial mount without SVG, or parameters changed).
-    if (!isNewCalculation && !isStandardChanged && hasSvg) {
+    const isNewCalculation =
+      calculation.calculationKey > 0 &&
+      lastProcessedCalcKeyRef.current !== calculation.calculationKey;
+
+    const needsInitialRender =
+      !hasSvg && lastProcessedCalcKeyRef.current === -1;
+
+    // Hanya generate ulang gambar skematik jika ada kalkulasi baru atau initial render
+    if (!isNewCalculation && !needsInitialRender) {
       return;
     }
 
@@ -304,10 +331,9 @@ export default function StructuralPage() {
 
     sendSchematicParameters(schematicParams.payload, {
       standardId: schematicParams.standardId,
-      replaceManualEdit: isNewCalculation || isStandardChanged,
+      replaceManualEdit: isNewCalculation,
     });
   }, [
-    calculation.isCalculated,
     calculation.calculationKey,
     isSchematicReady,
     schematicParams,
