@@ -64,6 +64,7 @@ import { useReport } from "../../report/hooks/useReport";
 import { ProjectToolsFlowHeader } from "../components/layout/ProjectToolsFlowHeader";
 import { ResultsTableView } from "../components/tables/pole-result/ResultTableView";
 import { ToastModal } from "../components/modals/ToastModal";
+import { ConfirmDeleteModal } from "../components/modals/ConfirmDeleteModal";
 import { SchematicPreviewCard } from "../components/schematic/SchematicPreviewCard";
 import { SchematicEditorModal } from "../components/schematic/SchematicEditorModal";
 import {
@@ -387,7 +388,8 @@ export default function StructuralPage() {
       const isLegacyDummyIS8 =
         String(p.lowerDiameter || "") === "165" &&
         String(p.upperDiameter || "") === "85" &&
-        (String(p.zHeight || "") === "8000" || String(p.height || "") === "8000");
+        (String(p.zHeight || "") === "8000" ||
+          String(p.height || "") === "8000");
 
       if (isLegacyDummyIS8) {
         customModeCleanedRef.current = true;
@@ -917,6 +919,21 @@ export default function StructuralPage() {
       return current;
     });
     setQuickPoleCount("");
+  };
+
+  // ── Delete Confirmation Modal State ──
+  const [deleteConfirm, setDeleteConfirm] = useState({
+    open: false,
+    itemName: "",
+    onConfirm: null,
+  });
+
+  const requestDelete = (itemName, onConfirmFn) => {
+    setDeleteConfirm({
+      open: true,
+      itemName,
+      onConfirm: onConfirmFn,
+    });
   };
 
   const [poleClipboard, setPoleClipboard] = useState(null);
@@ -1612,7 +1629,7 @@ export default function StructuralPage() {
                     <div className="flex items-center gap-2">
                       <h3 className="text-xs md:text-sm font-semibold text-blue-900 flex items-center gap-2">
                         <span className="w-1 h-3.5 bg-blue-600 rounded-full inline-block" />
-                        Embedment Length
+                        Embedment Length Input
                       </h3>
                     </div>
                   </div>
@@ -1929,48 +1946,50 @@ export default function StructuralPage() {
                           </span>
                         </div>
 
-                        {/* Top-right card actions */}
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleCopyPole(pole)}
-                            title="Copy Pole"
-                            className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handlePastePole(idx)}
-                            disabled={!poleClipboard}
-                            title="Paste Pole"
-                            className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                          </button>
-                          {SHOW_RESET_TO_DEFAULT &&
-                            isPoleModified(pole, idx) && (
-                              <button
-                                type="button"
-                                onClick={() => handleResetPole(idx)}
-                                className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 cursor-pointer transition-colors hover:underline"
-                                title="Reset to default spec"
-                              >
-                                <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
-                                <span>Reset to default spec</span>
-                              </button>
-                            )}
-                          {!isStandard && poleForm.poles.length > 1 && (
+                        {/* Top-right card actions: hanya ditampilkan pada mode Custom */}
+                        {!isStandard && (
+                          <div className="flex items-center gap-1.5">
                             <button
                               type="button"
-                              onClick={() => handleDeletePole(idx)}
-                              className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
-                              title="Delete Step Pole"
+                              onClick={() => handleCopyPole(pole)}
+                              title="Copy Pole"
+                              className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
                             >
-                              Delete
+                              <Copy className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                        </div>
+                            <button
+                              type="button"
+                              onClick={() => handlePastePole(idx)}
+                              disabled={!poleClipboard}
+                              title="Paste Pole"
+                              className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleResetPole(idx)}
+                              className="px-3 py-1 border border-red-200 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                              title="Reset Step Pole"
+                            >
+                              Reset
+                            </button>
+                            {poleForm.poles.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  requestDelete("Step Pole", () =>
+                                    handleDeletePole(idx),
+                                  )
+                                }
+                                className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                                title="Delete Step Pole"
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Fields Grid */}
@@ -2488,46 +2507,48 @@ export default function StructuralPage() {
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleCopyDo(obj)}
-                                title="Copy"
-                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handlePasteDo(idx)}
-                                disabled={!doClipboard}
-                                title="Paste"
-                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                              </button>
-                              {SHOW_RESET_TO_DEFAULT &&
-                                isDoModified(obj, idx) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleResetDo(idx)}
-                                    className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
-                                    title="Reset to default spec"
-                                  >
-                                    <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
-                                    <span>Reset to default spec</span>
-                                  </button>
-                                )}
-                              {!isStandard && (
+                            {/* Top-right card actions: hanya ditampilkan pada mode Custom */}
+                            {!isStandard && (
+                              <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteDo(idx)}
+                                  onClick={() => handleCopyDo(obj)}
+                                  title="Copy"
+                                  className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePasteDo(idx)}
+                                  disabled={!doClipboard}
+                                  title="Paste"
+                                  className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetDo(idx)}
+                                  className="px-3 py-1 border border-red-200 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                                  title="Reset Direct Object"
+                                >
+                                  Reset
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    requestDelete("Direct Object", () =>
+                                      handleDeleteDo(idx),
+                                    )
+                                  }
                                   className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                                  title="Delete Direct Object"
                                 >
                                   Delete
                                 </button>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
 
                           <div
@@ -3033,8 +3054,13 @@ export default function StructuralPage() {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDeleteOhw(idx)}
+                                onClick={() =>
+                                  requestDelete("Overhead Wire", () =>
+                                    handleDeleteOhw(idx),
+                                  )
+                                }
                                 className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                                title="Delete Overhead Wire"
                               >
                                 Delete
                               </button>
@@ -3523,46 +3549,48 @@ export default function StructuralPage() {
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => handleCopyArm(arm)}
-                                title="Copy"
-                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
-                              >
-                                <Copy className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handlePasteArm(armIdx)}
-                                disabled={!armClipboard}
-                                title="Paste"
-                                className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
-                              >
-                                <FileText className="w-3.5 h-3.5" />
-                              </button>
-                              {SHOW_RESET_TO_DEFAULT &&
-                                isArmModified(arm, armIdx) && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleResetArm(armIdx)}
-                                    className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
-                                    title="Reset to default spec"
-                                  >
-                                    <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
-                                    <span>Reset to default spec</span>
-                                  </button>
-                                )}
-                              {!isStandard && (
+                            {/* Top-right card actions: hanya ditampilkan pada mode Custom */}
+                            {!isStandard && (
+                              <div className="flex items-center gap-1.5">
                                 <button
                                   type="button"
-                                  onClick={() => handleDeleteArm(armIdx)}
+                                  onClick={() => handleCopyArm(arm)}
+                                  title="Copy"
+                                  className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePasteArm(armIdx)}
+                                  disabled={!armClipboard}
+                                  title="Paste"
+                                  className="p-1.5 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
+                                >
+                                  <FileText className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleResetArm(armIdx)}
+                                  className="px-3 py-1 border border-red-200 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                                  title="Reset Arm"
+                                >
+                                  Reset
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    requestDelete("Arm", () =>
+                                      handleDeleteArm(armIdx),
+                                    )
+                                  }
                                   className="px-2.5 py-1 border border-red-300 rounded text-red-600 text-xs font-medium hover:bg-red-50 cursor-pointer"
+                                  title="Delete Arm"
                                 >
                                   Delete Arm
                                 </button>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
 
                           {/* Arm Input Fields */}
@@ -4078,54 +4106,52 @@ export default function StructuralPage() {
                                           </span>
                                         </div>
 
-                                        <div className="flex items-center gap-1.5">
-                                          <button
-                                            type="button"
-                                            onClick={() => handleCopyAo(ao)}
-                                            title="Copy"
-                                            className="p-1 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
-                                          >
-                                            <Copy className="w-3 h-3" />
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              handlePasteAo(armIdx, aoIdx)
-                                            }
-                                            disabled={!aoClipboard}
-                                            title="Paste"
-                                            className="p-1 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
-                                          >
-                                            <FileText className="w-3 h-3" />
-                                          </button>
-                                          {SHOW_RESET_TO_DEFAULT &&
-                                            isAoModified(armIdx, ao, aoIdx) && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  handleResetAo(armIdx, aoIdx)
-                                                }
-                                                className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors cursor-pointer"
-                                                title="Reset to default spec"
-                                              >
-                                                <RotateCcw className="w-3 h-3 text-blue-600" />
-                                                <span>
-                                                  Reset to default spec
-                                                </span>
-                                              </button>
-                                            )}
-                                          {!isStandard && (
+                                        {/* Top-right card actions: hanya ditampilkan pada mode Custom */}
+                                        {!isStandard && (
+                                          <div className="flex items-center gap-1.5">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleCopyAo(ao)}
+                                              title="Copy"
+                                              className="p-1 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer"
+                                            >
+                                              <Copy className="w-3 h-3" />
+                                            </button>
                                             <button
                                               type="button"
                                               onClick={() =>
-                                                handleDeleteAo(armIdx, aoIdx)
+                                                handlePasteAo(armIdx, aoIdx)
+                                              }
+                                              disabled={!aoClipboard}
+                                              title="Paste"
+                                              className="p-1 border border-gray-200 hover:border-gray-400 rounded text-gray-600 hover:text-gray-900 cursor-pointer disabled:opacity-40"
+                                            >
+                                              <FileText className="w-3 h-3" />
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                handleResetAo(armIdx, aoIdx)
+                                              }
+                                              className="px-2.5 py-0.5 border border-red-200 rounded text-red-600 text-[11px] font-medium hover:bg-red-50 cursor-pointer"
+                                              title="Reset Arm Object"
+                                            >
+                                              Reset
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                requestDelete("Arm Object", () =>
+                                                  handleDeleteAo(armIdx, aoIdx),
+                                                )
                                               }
                                               className="px-2 py-0.5 border border-red-300 rounded text-red-600 text-[11px] font-medium hover:bg-red-50 cursor-pointer"
+                                              title="Delete Arm Object"
                                             >
                                               Delete Object
                                             </button>
-                                          )}
-                                        </div>
+                                          </div>
+                                        )}
                                       </div>
 
                                       <div
@@ -4584,6 +4610,20 @@ export default function StructuralPage() {
         onOpenEditor={openSchematicEditor}
         onReset={handleRegenerateSchematic}
         isEdited={Boolean(schematicData?.editedSvg)}
+      />
+
+      {/* Confirm Delete Modal */}
+      <ConfirmDeleteModal
+        open={deleteConfirm.open}
+        itemName={deleteConfirm.itemName}
+        onClose={() =>
+          setDeleteConfirm({ open: false, itemName: "", onConfirm: null })
+        }
+        onConfirm={async () => {
+          if (deleteConfirm.onConfirm) {
+            await deleteConfirm.onConfirm();
+          }
+        }}
       />
 
       {/* Toast Modal for feedback/notifications */}

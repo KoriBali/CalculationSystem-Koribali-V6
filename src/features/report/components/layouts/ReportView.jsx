@@ -355,7 +355,6 @@ export function ReportView() {
                   ...(isStandard && poleHeightId ? { poleStandardHeightId: poleHeightId } : {}),
                   stepPoles: calcStepPoles,
                   evaluatedPositionsM,
-                  evaluatedPositionM: evaluatedPositionsM,
                   directObjects: calcDirectObjects,
                   overheadWires: mapCalculationOverheadWires(rawOhwList),
                   arms: mapCalculationArms(rawArmsList, materialsList, isOldJil),

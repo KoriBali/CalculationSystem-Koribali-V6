@@ -44,19 +44,21 @@ export const ConfirmDeleteModal = ({
         <div className="flex gap-2 sm:gap-3">
           {/* Cancel => closes without deleting */}
           <button
+            type="button"
             onClick={onClose}
-            className="flex-1 py-2 sm:py-3 font-bold text-xs sm:text-sm bg-slate-100 text-slate-600 rounded-md sm:rounded-lg hover:bg-slate-200"
+            className="flex-1 py-2 sm:py-3 font-bold text-xs sm:text-sm bg-slate-100 text-slate-600 rounded-md sm:rounded-lg hover:bg-slate-200 cursor-pointer transition-colors"
           >
             Cancel
           </button>
 
           {/* Confirm => awaits async deletion then closes */}
           <button
+            type="button"
             onClick={async () => {
               await onConfirm();
               onClose();
             }}
-            className="flex-1 py-2 sm:py-3 font-bold text-xs sm:text-sm bg-red-500 text-white rounded-md sm:rounded-lg hover:bg-red-600"
+            className="flex-1 py-2 sm:py-3 font-bold text-xs sm:text-sm bg-red-500 text-white rounded-md sm:rounded-lg hover:bg-red-600 cursor-pointer transition-colors"
           >
             Delete
           </button>

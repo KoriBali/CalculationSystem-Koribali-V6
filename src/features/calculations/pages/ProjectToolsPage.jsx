@@ -1066,7 +1066,7 @@ export default function ProjectToolsPage() {
           className="flex flex-col md:sticky md:top-20 scroll-mt-20"
         >
           {/* Section Div Gambar (Diagram Preview Card terpisah) */}
-          <div className="border border-gray-300 rounded-lg p-4 md:p-5 flex flex-col bg-white shadow-xs h-[660px] md:h-[660px] xl:h-[695px]">
+          <div className="border border-gray-300 rounded-lg p-3.5 sm:p-4 flex flex-col bg-white shadow-xs h-[660px] md:h-[660px] xl:h-[695px]">
             {/* Header Bar: Pure Diagram Preview (tanpa dropdown Ground Position) */}
             <div className="flex items-center justify-between gap-2.5 mb-3.5 pb-2 border-b border-gray-200">
               <h2 className="text-xs md:text-sm font-semibold text-gray-900 shrink-0">
@@ -1114,7 +1114,7 @@ export default function ProjectToolsPage() {
                       <div
                         key={`${label.key}:${label.lines.join("|")}`}
                         style={label.style}
-                        className={`absolute pointer-events-none whitespace-nowrap text-[10px] sm:text-[12px] lg:text-[13px] xl:text-[14px] leading-tight text-[#1d4ed8] ${
+                        className={`absolute pointer-events-none whitespace-nowrap text-[12px] sm:text-[12px] lg:text-[12px] xl:text-[14px] leading-tight text-[#1d4ed8] ${
                           label.isCentered ? "text-center" : ""
                         }`}
                       >

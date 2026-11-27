@@ -69,8 +69,8 @@ function NavItem({ item, path, isActive, isCollapsed, layoutId }) {
 
         ${
           isCollapsed
-            ? "justify-center w-11 mx-auto rounded-lg"
-            : "gap-3 px-3 mx-1 rounded-lg"
+            ? "justify-center w-11 mx-auto rounded"
+            : "gap-3 px-3 mx-1 rounded"
         }
 
         ${isActive ? "text-slate-900 font-semibold" : "text-slate-600 hover:text-slate-900"}
@@ -84,7 +84,7 @@ function NavItem({ item, path, isActive, isCollapsed, layoutId }) {
             absolute inset-0
             bg-slate-100
             border border-slate-300
-            rounded-lg
+            rounded
             z-0
           "
           transition={SPRING_TRANSITION}
@@ -96,7 +96,7 @@ function NavItem({ item, path, isActive, isCollapsed, layoutId }) {
         <div
           className="
             absolute inset-0
-            rounded-lg
+            rounded
             bg-transparent
             group-hover:bg-slate-50
             transition-colors duration-200
